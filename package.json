@@ -1,0 +1,10 @@
+{
+  "name": "journal-site",
+  "private": true,
+  "description": "Журнал групп: кабинет преподавателя и личные кабинеты учеников",
+  "scripts": {
+    "start": "node --no-warnings server/server.js",
+    "set-password": "node --no-warnings server/server.js set-password"
+  },
+  "engines": { "node": ">=22.13" }
+}

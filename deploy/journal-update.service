@@ -1,0 +1,6 @@
+[Unit]
+Description=Журнал групп: забрать обновления с GitHub
+
+[Service]
+Type=oneshot
+ExecStart=/opt/journal/deploy/update.sh

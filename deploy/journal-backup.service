@@ -1,0 +1,8 @@
+[Unit]
+Description=Журнал групп: копия базы
+
+[Service]
+Type=oneshot
+User=journal
+Environment=DATA_DIR=/var/lib/journal
+ExecStart=/usr/local/bin/node --no-warnings /opt/journal/server/backup.js

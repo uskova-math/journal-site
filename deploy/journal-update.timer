@@ -1,0 +1,10 @@
+[Unit]
+Description=Журнал групп: проверять обновления каждые 5 минут
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

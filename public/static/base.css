@@ -1,0 +1,38 @@
+@import url("https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Unbounded:wght@500;600&display=swap");
+:root{
+  --paper:#f3f5f9; --surface:#ffffff; --text:#18202e; --muted:#5b6578; --line:#d8dfe9;
+  --ink:#2446b8; --ink-soft:#e5ebfb; --on-ink:#ffffff;
+  --ok:#17834a; --ok-soft:#dff3e7; --part:#9a6200; --part-soft:#fbefd6;
+  --miss:#bd3618; --miss-soft:#fbe4dd; --wait:#5f6879; --wait-soft:#eaedf3;
+  --grid:rgba(36,70,184,.07);
+  --font-display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --font-body:"Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#10141c; --surface:#171d28; --text:#e5e9f1; --muted:#9ba5b6; --line:#2a3242;
+    --ink:#8ea8ff; --ink-soft:#1d2849; --on-ink:#0c1120;
+    --ok:#52c98a; --ok-soft:#153222; --part:#e6ae42; --part-soft:#3a2b0f;
+    --miss:#ff8462; --miss-soft:#3e1d14; --wait:#a3acbc; --wait-soft:#232a37;
+    --grid:rgba(142,168,255,.05);
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background-color:var(--paper);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:22px 22px;
+  color:var(--text); font-family:var(--font-body); font-size:15px; line-height:1.5;
+}
+button,input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+h1,h2{font-family:var(--font-display);font-weight:500;text-wrap:balance}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}
+.muted{color:var(--muted)}
+.flabel{font-size:13px;font-weight:600;color:var(--muted)}
+.btn{border:1px solid var(--ink);background:var(--ink);color:var(--on-ink);border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+.btn.ghost{background:var(--surface);color:var(--ink);border-color:var(--line)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}

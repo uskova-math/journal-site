@@ -1,0 +1,21 @@
+[Unit]
+Description=Журнал групп (сайт)
+After=network.target
+
+[Service]
+User=journal
+Group=journal
+Environment=DATA_DIR=/var/lib/journal
+Environment=PORT=3000
+Environment=HOST=127.0.0.1
+ExecStart=/usr/local/bin/node --no-warnings /opt/journal/server/server.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/journal
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
