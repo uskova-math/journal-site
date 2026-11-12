@@ -70,6 +70,9 @@ h2{font-size:16px;margin:0 0 10px}
 .diff{font-size:13px;border-radius:999px;padding:2px 9px;white-space:nowrap}
 .diff.up{background:var(--ok-soft);color:var(--ok)} .diff.down{background:var(--miss-soft);color:var(--miss)} .diff.same{background:var(--wait-soft);color:var(--wait)}
 .hint{font-size:13px;color:var(--muted);margin:0}
+.per{display:flex;flex-wrap:wrap;gap:6px}
+.per-b{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;cursor:pointer;font-weight:600;color:var(--muted)}
+.per-b[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
 /* просмотр картинок */
 .viewer{position:fixed;inset:0;background:rgba(10,14,22,.94);z-index:20;display:flex;flex-direction:column}
 .v-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;background:var(--surface)}
@@ -89,7 +92,7 @@ h2{font-size:16px;margin:0 0 10px}
 (function(){
 "use strict";
 var TOKEN=(location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)/)||[])[1];
-var D=null, VIEW="home";
+var D=null, VIEW="home", PER="all";
 var $=function(s){return document.querySelector(s);};
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 function pad(n){return String(n).padStart(2,"0");}
@@ -187,9 +190,12 @@ function renderLessons(){
   return '<div class="filter"><input type="search" id="q" placeholder="Поиск по теме, например «векторы» или «№16»" aria-label="Поиск по занятиям"></div>'+
     '<div class="list" id="list">'+ls.map(lessonCard).join("")+'</div>';
 }
+var MONTHS=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+function monthName(key){var y=+key.slice(0,4),m=+key.slice(5,7);return MONTHS[m-1]+(y!==new Date().getFullYear()?" "+y:"");}
+function inPer(l){return PER==="all"||String(l.date).slice(0,7)===PER;}
 function metric(){
   var y=0,n=0,hs=0,hn=0,ok=0,on=0,done=0,part=0,none=0;
-  D.lessons.forEach(function(l){var m=l.mark;
+  D.lessons.filter(inPer).forEach(function(l){var m=l.mark;
     if(m.att==="y")y++;else if(m.att==="n")n++;
     if(!l.noHw&&(m.hw==="done"||m.hw==="part"||m.hw==="none")){hn++;hs+=m.hw==="done"?1:m.hw==="part"?.5:0;if(m.hw==="done")done++;else if(m.hw==="part")part++;else none++;}
     if(!l.noHw&&l.count&&typeof m.ok==="number"){ok+=Math.min(m.ok,l.count+2);on+=l.count;}
@@ -201,9 +207,14 @@ function metric(){
   };
 }
 function renderStats(){
-  var x=metric(), a=D.groupAvg||{}, M=[["att","Посещаемость"],["hw","Сдача домашки"],["ok","Верно решено"]];
+  var months=[];D.lessons.forEach(function(l){var k=String(l.date).slice(0,7);if(l.date<=today()&&months.indexOf(k)<0)months.push(k);});
+  months.sort().reverse();
+  if(PER!=="all"&&months.indexOf(PER)<0)PER="all";
+  var per='<div class="per" role="group" aria-label="Период">'+[["all","Весь период"]].concat(months.map(function(k){return [k,monthName(k)];})).map(function(o){
+    return '<button type="button" class="per-b" data-per="'+o[0]+'" aria-pressed="'+(PER===o[0])+'">'+esc(o[1])+'</button>';}).join("")+'</div>';
+  var x=metric(), a=(PER==="all"?D.groupAvg:(D.groupAvgByMonth||{})[PER])||{}, M=[["att","Посещаемость"],["hw","Сдача домашки"],["ok","Верно решено"]];
   function pct(v){return v==null?"—":Math.round(v)+"%";}
-  var h='<div class="tiles">'+M.map(function(m){return '<div class="tile"><div class="t-label">'+m[1]+'</div><div class="t-val">'+pct(x[m[0]].v)+'</div><div class="t-avg">в группе '+pct(a[m[0]])+'</div></div>';}).join("")+'</div>';
+  var h=per+'<div class="tiles">'+M.map(function(m){return '<div class="tile"><div class="t-label">'+m[1]+'</div><div class="t-val">'+pct(x[m[0]].v)+'</div><div class="t-avg">в группе '+pct(a[m[0]])+'</div></div>';}).join("")+'</div>';
   h+='<section class="panel"><h2>Сравнение со средним по группе</h2>'+M.map(function(m){
     var k=m[0], v=x[k].v, av=a[k], sc=Math.max(100,v||0,av||0), diff="", bar="";
     if(v==null)diff='<span class="diff same">нет данных</span>';
@@ -239,6 +250,9 @@ function route(){
   VIEW=hsh==="lessons"||hsh==="stats"?hsh:"home"; render(); window.scrollTo(0,0);
 }
 window.addEventListener("hashchange",route);
+
+/* выбор периода в статистике */
+document.addEventListener("click",function(e){var b=e.target.closest("[data-per]");if(!b)return;PER=b.dataset.per;render();});
 
 /* поиск по урокам */
 document.addEventListener("input",function(e){

@@ -236,11 +236,19 @@ function studentPayload(tok) {
   // среднее по группе: среднее из процентов всех учеников этих групп
   const mates = new Set();
   groups.forEach(g => (g.data.students || []).forEach(s => mates.add(s.id)));
-  const avg = {};
-  ['att', 'hw', 'ok'].forEach(k => {
-    const vals = [...mates].map(id => metricsFor(raw, id)[k]).filter(v => v != null);
-    avg[k] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-  });
+  function avgOf(ls) {
+    const out = {};
+    ['att', 'hw', 'ok'].forEach(k => {
+      const vals = [...mates].map(id => metricsFor(ls, id)[k]).filter(v => v != null);
+      out[k] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    });
+    return out;
+  }
+  const avg = avgOf(raw);
+  // среднее по группе за каждый месяц, чтобы ученик мог смотреть статистику по месяцам
+  const avgByMonth = {};
+  [...new Set(raw.map(l => String(l.date || '').slice(0, 7)).filter(m => /^\d{4}-\d{2}$/.test(m)))]
+    .forEach(m => { avgByMonth[m] = avgOf(raw.filter(l => String(l.date).slice(0, 7) === m)); });
   const lessons = raw.map(l => ({
     id: l.id, groupId: l.groupId, date: l.date, topic: l.topic || '',
     noHw: !!l.noHw, hw: l.noHw ? '' : (l.hw || ''), count: parseInt(l.count, 10) || null,
@@ -250,7 +258,7 @@ function studentPayload(tok) {
   return {
     student: { id: sid, name: me.name },
     groups: groups.map(g => ({ id: g.id, name: g.data.name })),
-    lessons, groupAvg: avg,
+    lessons, groupAvg: avg, groupAvgByMonth: avgByMonth,
   };
 }
 
