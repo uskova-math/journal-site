@@ -79,6 +79,8 @@ h2{font-size:16px;margin:0 0 10px}
 .sub-f{position:relative;display:inline-flex}
 .sub-x{position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--miss);cursor:pointer;font-size:15px;line-height:1;display:grid;place-items:center}
 .sub-act{display:flex;gap:8px;flex-wrap:wrap}
+.hwsub.drop{background:var(--ink-soft)}
+@media (hover:none){.desk-only{display:none}}
 .sub-act label.btn{cursor:pointer}
 .sub-cbox{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 .sub-cbox[hidden]{display:none}
@@ -209,7 +211,7 @@ function subBlock(l){
       '<button type="button" class="btn ghost" data-cmt="'+esc(l.id)+'">'+(sub&&sub.comment?'Изменить комментарий':'Комментарий')+'</button></div>'+
       '<div class="sub-cbox" id="cbox-'+esc(l.id)+'" hidden><textarea id="ct-'+esc(l.id)+'" rows="3" placeholder="Например: в №3 не понял, как начать">'+esc((sub&&sub.comment)||"")+'</textarea>'+
       '<button type="button" class="btn" data-csave="'+esc(l.id)+'">Отправить комментарий</button></div>';
-    if(!files.length)h+='<p class="hint">Сфотографируйте решение в тетради или выберите фото из галереи. Можно сразу несколько.</p>';
+    if(!files.length)h+='<p class="hint">Сфотографируйте решение в тетради или выберите фото из галереи. Можно сразу несколько.<span class="desk-only"> С компьютера можно вставить картинку через Ctrl+V или перетащить файл сюда мышкой.</span></p>';
   }
   return h+'<p class="err" id="err-'+esc(l.id)+'" role="alert"></p></div>';
 }
@@ -522,6 +524,39 @@ document.addEventListener("pointerup",edUp);
 document.addEventListener("pointercancel",edUp);
 window.addEventListener("resize",function(){if(ED)editorBase();});
 document.addEventListener("click",function(e){var b=e.target.closest("[data-ed]");if(b&&ED)edAction(b.dataset.ed);});
+
+/* вставка Ctrl+V и перетаскивание с компьютера */
+var LAST_SUB=null;
+document.addEventListener("pointerdown",function(e){var b=e.target.closest&&e.target.closest(".hwsub");if(b)LAST_SUB=b.id.slice(4);});
+function targetSub(){
+  if(LAST_SUB&&document.getElementById("sub-"+LAST_SUB))return LAST_SUB;
+  var best=null,bd=1e9,mid=window.innerHeight/2;
+  document.querySelectorAll(".hwsub").forEach(function(el){
+    var r=el.getBoundingClientRect(); if(r.bottom<0||r.top>window.innerHeight)return;
+    var dd=Math.abs((r.top+r.bottom)/2-mid); if(dd<bd){bd=dd;best=el.id.slice(4);}
+  });
+  return best;
+}
+function canAdd(lid){var l=findL(lid);return l&&!UP[lid];}
+document.addEventListener("paste",function(e){
+  if(ED||(e.target.tagName==="TEXTAREA"&&!(e.clipboardData&&e.clipboardData.files&&e.clipboardData.files.length)))return;
+  var items=(e.clipboardData&&e.clipboardData.items)||[], files=[];
+  for(var i=0;i<items.length;i++)if(items[i].kind==="file"){var f=items[i].getAsFile();if(f)files.push(f);}
+  if(!files.length)return;
+  var lid=targetSub(); if(!lid||!canAdd(lid))return;
+  e.preventDefault();
+  var d=new Date();
+  files=files.map(function(f,n){return (!f.name||/^image\.\w+$/i.test(f.name))?new File([f],"Скриншот "+d.getHours()+"-"+String(d.getMinutes()).padStart(2,"0")+(n?" ("+(n+1)+")":"")+".png",{type:f.type}):f;});
+  openEditor(lid,files);
+});
+document.addEventListener("dragover",function(e){var b=e.target.closest&&e.target.closest(".hwsub");if(b){e.preventDefault();b.classList.add("drop");}});
+document.addEventListener("dragleave",function(e){var b=e.target.closest&&e.target.closest(".hwsub");if(b)b.classList.remove("drop");});
+document.addEventListener("drop",function(e){
+  var b=e.target.closest&&e.target.closest(".hwsub"); if(!b)return;
+  e.preventDefault(); b.classList.remove("drop");
+  var lid=b.id.slice(4);
+  if(canAdd(lid)&&e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length)openEditor(lid,e.dataTransfer.files);
+});
 
 /* отправка решения */
 document.addEventListener("change",function(e){
