@@ -84,6 +84,19 @@ h2{font-size:16px;margin:0 0 10px}
 .sub-cbox[hidden]{display:none}
 .sub-cbox textarea{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 10px;resize:vertical}
 .err{color:var(--miss);font-size:14px;margin:0}
+/* редактор фото */
+.ed{position:fixed;inset:0;z-index:30;background:#0d1118;color:#e9edf5;display:flex;flex-direction:column;gap:8px;padding:10px 12px calc(12px + env(safe-area-inset-bottom))}
+.ed-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.ed-count{font-weight:600}
+.ed-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+#ed-c{touch-action:none;display:block;cursor:crosshair}
+.ed-hint{margin:0;font-size:13px;color:#aab3c4;text-align:center}
+.ed-tools{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.ed-b{border:1px solid #39435a;background:#1a2130;color:#e9edf5;border-radius:8px;padding:8px 12px;font-weight:600;cursor:pointer}
+.ed-b[aria-pressed="true"]{background:#e9edf5;color:#0d1118}
+.ed-b.danger{color:#ff8a6c}
+.ed-nav{display:flex;justify-content:space-between;gap:10px}
+.ed .btn.ghost{background:transparent;color:#e9edf5;border-color:#39435a}
 .err:empty{display:none}
 .per{display:flex;flex-wrap:wrap;gap:6px}
 .per-b{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;cursor:pointer;font-weight:600;color:var(--muted)}
@@ -103,6 +116,7 @@ h2{font-size:16px;margin:0 0 10px}
 <body>
 <main class="wrap" id="app"><div class="panel empty">Загружаю кабинет…</div></main>
 <div id="viewer"></div>
+<div id="editor"></div>
 <script>
 (function(){
 "use strict";
@@ -226,13 +240,13 @@ function compress(file){
 function findL(id){for(var i=0;i<D.lessons.length;i++)if(D.lessons[i].id===id)return D.lessons[i];return null;}
 function keepScroll(fn){var y=window.scrollY;fn();window.scrollTo(0,y);}
 function showErr(lid,t){var e=document.getElementById("err-"+lid);if(e)e.textContent=t||"";}
-function sendFiles(lid,list){
+function sendFiles(lid,list,prepared){
   var files=Array.prototype.slice.call(list,0,20), ids=[], done=0, failed=null;
   if(!files.length)return;
   UP[lid]="Загружаю фото: 0 из "+files.length+"…"; keepScroll(render);
   var chain=Promise.resolve();
   files.forEach(function(f){
-    chain=chain.then(function(){return compress(f);}).then(function(cf){
+    chain=chain.then(function(){return prepared?f:compress(f);}).then(function(cf){
       if(cf.size>20*1024*1024)throw new Error("«"+f.name+"» больше 20 МБ.");
       return api("/upload",cf,{"Content-Type":cf.type||"application/octet-stream","X-Filename":encodeURIComponent(cf.name||"фото")});
     }).then(function(r){ids.push(r.id);},function(e){failed=failed||e.message;}).then(function(){
@@ -340,10 +354,179 @@ function route(){
 }
 window.addEventListener("hashchange",route);
 
+/* ---------- редактор фото перед отправкой ---------- */
+var ED=null; // {lid, items:[{file,img,rot,crop:{x,y,w,h},scan}], i, extra:[файлы без редактора], base, disp}
+function loadImg(file){
+  return new Promise(function(res){
+    var url=URL.createObjectURL(file), img=new Image();
+    img.onload=function(){res(img);};
+    img.onerror=function(){URL.revokeObjectURL(url);res(null);};
+    img.src=url;
+  });
+}
+function openEditor(lid,list){
+  var files=Array.prototype.slice.call(list,0,20), imgs=[], extra=[];
+  files.forEach(function(f){(/^image\/(jpeg|png|webp)$/.test(f.type)?imgs:extra).push(f);});
+  if(!imgs.length){sendFiles(lid,extra);return;}
+  Promise.all(imgs.map(loadImg)).then(function(loaded){
+    var items=[];
+    loaded.forEach(function(img,k){if(img)items.push({file:imgs[k],img:img,rot:0,crop:{x:0,y:0,w:1,h:1},scan:false});else extra.push(imgs[k]);});
+    if(!items.length){sendFiles(lid,extra);return;}
+    ED={lid:lid,items:items,i:0,extra:extra};
+    document.body.style.overflow="hidden";
+    renderEditor();
+  });
+}
+function closeEditor(){
+  if(ED)ED.items.forEach(function(it){try{URL.revokeObjectURL(it.img.src);}catch(e){}});
+  ED=null; document.body.style.overflow=""; $("#editor").innerHTML="";
+}
+function rotDims(it){var w=it.img.naturalWidth,h=it.img.naturalHeight;return it.rot%180?{w:h,h:w}:{w:w,h:h};}
+function drawRotated(ctx,it,k){
+  var w0=it.img.naturalWidth*k, h0=it.img.naturalHeight*k, cw=ctx.canvas.width, ch=ctx.canvas.height;
+  ctx.save();
+  if(it.rot===90){ctx.translate(cw,0);ctx.rotate(Math.PI/2);}
+  else if(it.rot===180){ctx.translate(cw,ch);ctx.rotate(Math.PI);}
+  else if(it.rot===270){ctx.translate(0,ch);ctx.rotate(-Math.PI/2);}
+  ctx.drawImage(it.img,0,0,w0,h0);
+  ctx.restore();
+}
+/* режим «как скан»: убираем тени и серый фон, почерк делаем контрастнее */
+function scanFilter(canvas){
+  var w=canvas.width, h=canvas.height, ctx=canvas.getContext("2d");
+  var sw=Math.max(8,Math.round(w/24)), sh=Math.max(8,Math.round(h/24));
+  var small=document.createElement("canvas"); small.width=sw; small.height=sh;
+  var sx=small.getContext("2d"); sx.imageSmoothingQuality="high"; sx.drawImage(canvas,0,0,sw,sh);
+  var bgc=document.createElement("canvas"); bgc.width=w; bgc.height=h;
+  var bx=bgc.getContext("2d"); bx.imageSmoothingEnabled=true; bx.imageSmoothingQuality="high"; bx.drawImage(small,0,0,w,h);
+  var src=ctx.getImageData(0,0,w,h), bg=bx.getImageData(0,0,w,h).data, d=src.data;
+  for(var p=0;p<d.length;p+=4){
+    var bl=Math.max(40,0.299*bg[p]+0.587*bg[p+1]+0.114*bg[p+2]);
+    for(var c=0;c<3;c++){
+      var r=d[p+c]/bl, v=(r-0.55)/(0.92-0.55);
+      d[p+c]=v<=0?0:v>=1?255:Math.round(v*255);
+    }
+  }
+  ctx.putImageData(src,0,0);
+}
+function editorBase(){
+  var it=ED.items[ED.i], rd=rotDims(it);
+  var stage=$("#ed-stage"); if(!stage)return;
+  var maxW=stage.clientWidth-8, maxH=stage.clientHeight-8;
+  var k=Math.min(maxW/rd.w,maxH/rd.h,1), dpr=window.devicePixelRatio||1;
+  var dw=Math.max(40,Math.floor(rd.w*k)), dh=Math.max(40,Math.floor(rd.h*k));
+  var base=document.createElement("canvas"); base.width=Math.round(dw*dpr); base.height=Math.round(dh*dpr);
+  drawRotated(base.getContext("2d"),it,base.width/rd.w);
+  if(it.scan)scanFilter(base);
+  ED.base=base; ED.disp={w:dw,h:dh,dpr:dpr};
+  var c=$("#ed-c"); c.width=base.width; c.height=base.height; c.style.width=dw+"px"; c.style.height=dh+"px";
+  editorPaint();
+}
+function editorPaint(){
+  var c=$("#ed-c"); if(!c||!ED.base)return;
+  var it=ED.items[ED.i], x=c.getContext("2d"), W=c.width, H=c.height, dpr=ED.disp.dpr;
+  var r={x:it.crop.x*W,y:it.crop.y*H,w:it.crop.w*W,h:it.crop.h*H};
+  x.clearRect(0,0,W,H); x.drawImage(ED.base,0,0);
+  x.fillStyle="rgba(10,14,22,.55)";
+  x.fillRect(0,0,W,r.y); x.fillRect(0,r.y+r.h,W,H-r.y-r.h); x.fillRect(0,r.y,r.x,r.h); x.fillRect(r.x+r.w,r.y,W-r.x-r.w,r.h);
+  x.strokeStyle="#fff"; x.lineWidth=2*dpr; x.strokeRect(r.x,r.y,r.w,r.h);
+  var L=22*dpr, t=5*dpr; x.fillStyle="#fff";
+  [[r.x,r.y,1,1],[r.x+r.w,r.y,-1,1],[r.x,r.y+r.h,1,-1],[r.x+r.w,r.y+r.h,-1,-1]].forEach(function(q){
+    x.fillRect(q[2]>0?q[0]-t/2:q[0]-L+t/2,q[3]>0?q[1]-t/2:q[1]-t/2,L,t);
+    x.fillRect(q[2]>0?q[0]-t/2:q[0]-t/2,q[3]>0?q[1]-t/2:q[1]-L+t/2,t,L);
+  });
+}
+var DRAG=null;
+function edPoint(e){var c=$("#ed-c"),b=c.getBoundingClientRect();return {x:(e.clientX-b.left)/b.width,y:(e.clientY-b.top)/b.height,bw:b.width,bh:b.height};}
+function edDown(e){
+  if(!ED||e.target.id!=="ed-c")return;
+  var p=edPoint(e), cr=ED.items[ED.i].crop, tx=26/p.bw, ty=26/p.bh;
+  var corners={tl:[cr.x,cr.y],tr:[cr.x+cr.w,cr.y],bl:[cr.x,cr.y+cr.h],br:[cr.x+cr.w,cr.y+cr.h]}, hit=null;
+  Object.keys(corners).forEach(function(k){var q=corners[k];if(!hit&&Math.abs(p.x-q[0])<tx&&Math.abs(p.y-q[1])<ty)hit=k;});
+  if(!hit&&p.x>cr.x&&p.x<cr.x+cr.w&&p.y>cr.y&&p.y<cr.y+cr.h)hit="move";
+  if(!hit)return;
+  DRAG={k:hit,p:p,c:{x:cr.x,y:cr.y,w:cr.w,h:cr.h}};
+  e.target.setPointerCapture&&e.target.setPointerCapture(e.pointerId);
+  e.preventDefault();
+}
+function edMove(e){
+  if(!DRAG||!ED)return;
+  var p=edPoint(e), dx=p.x-DRAG.p.x, dy=p.y-DRAG.p.y, s=DRAG.c, m=0.06, n={x:s.x,y:s.y,w:s.w,h:s.h};
+  function cl(v){return Math.max(0,Math.min(1,v));}
+  if(DRAG.k==="move"){n.x=Math.max(0,Math.min(1-s.w,s.x+dx));n.y=Math.max(0,Math.min(1-s.h,s.y+dy));}
+  else{
+    var l=s.x,t=s.y,r=s.x+s.w,b=s.y+s.h;
+    if(DRAG.k[1]==="l")l=Math.min(cl(s.x+dx),r-m); else r=Math.max(cl(s.x+s.w+dx),l+m);
+    if(DRAG.k[0]==="t")t=Math.min(cl(s.y+dy),b-m); else b=Math.max(cl(s.y+s.h+dy),t+m);
+    n={x:l,y:t,w:r-l,h:b-t};
+  }
+  ED.items[ED.i].crop=n; editorPaint(); e.preventDefault();
+}
+function edUp(){DRAG=null;}
+function renderEditor(){
+  var it=ED.items[ED.i], n=ED.items.length, last=ED.i===n-1;
+  $("#editor").innerHTML='<div class="ed" role="dialog" aria-modal="true" aria-label="Подготовка фото к отправке">'+
+    '<div class="ed-top"><span class="ed-count">Фото '+(ED.i+1)+' из '+n+(ED.extra.length?' · ещё '+ED.extra.length+' файл(а) без изменений':'')+'</span>'+
+      '<button type="button" class="btn ghost" data-ed="cancel">Отмена</button></div>'+
+    '<div class="ed-stage" id="ed-stage"><canvas id="ed-c" aria-label="Фото с рамкой обрезки"></canvas></div>'+
+    '<p class="ed-hint">Поверните фото, если оно лежит боком, и потяните за уголки рамки, чтобы оставить только решение.</p>'+
+    '<div class="ed-tools">'+
+      '<button type="button" class="ed-b" data-ed="rl" aria-label="Повернуть влево">↺ Повернуть</button>'+
+      '<button type="button" class="ed-b" data-ed="rr" aria-label="Повернуть вправо">↻ Повернуть</button>'+
+      '<button type="button" class="ed-b" data-ed="scan" aria-pressed="'+it.scan+'">Как скан</button>'+
+      '<button type="button" class="ed-b" data-ed="reset">Сбросить</button>'+
+      '<button type="button" class="ed-b danger" data-ed="drop">Убрать фото</button>'+
+    '</div>'+
+    '<div class="ed-nav">'+(ED.i>0?'<button type="button" class="btn ghost" data-ed="prev">← Назад</button>':'<span></span>')+
+      (last?'<button type="button" class="btn" data-ed="send">Отправить '+(n+ED.extra.length)+' '+plural(n+ED.extra.length,"файл","файла","файлов")+'</button>'
+           :'<button type="button" class="btn" data-ed="next">Далее →</button>')+'</div></div>';
+  requestAnimationFrame(editorBase);
+}
+function exportItem(it){
+  var rd=rotDims(it), cw=it.crop.w*rd.w, ch=it.crop.h*rd.h;
+  var k=Math.min(1,2000/Math.max(cw,ch));
+  k=Math.min(k,Math.sqrt(16e6/(rd.w*rd.h))); // не больше ~16 Мп за раз, чтобы телефон не упал
+  var full=document.createElement("canvas"); full.width=Math.round(rd.w*k); full.height=Math.round(rd.h*k);
+  var fx=full.getContext("2d"); fx.fillStyle="#fff"; fx.fillRect(0,0,full.width,full.height);
+  drawRotated(fx,it,k);
+  var out=document.createElement("canvas"); out.width=Math.max(1,Math.round(cw*k)); out.height=Math.max(1,Math.round(ch*k));
+  out.getContext("2d").drawImage(full,Math.round(it.crop.x*full.width),Math.round(it.crop.y*full.height),out.width,out.height,0,0,out.width,out.height);
+  if(it.scan)scanFilter(out);
+  return new Promise(function(res){
+    out.toBlob(function(b){res(new File([b],(it.file.name||"фото").replace(/\.[^.]+$/,"")+".jpg",{type:"image/jpeg"}));},"image/jpeg",0.82);
+  });
+}
+function edAction(a){
+  var it=ED.items[ED.i];
+  if(a==="cancel"){closeEditor();return;}
+  if(a==="rl"||a==="rr"){it.rot=(it.rot+(a==="rr"?90:270))%360;it.crop={x:0,y:0,w:1,h:1};renderEditor();return;}
+  if(a==="scan"){it.scan=!it.scan;renderEditor();return;}
+  if(a==="reset"){it.rot=0;it.scan=false;it.crop={x:0,y:0,w:1,h:1};renderEditor();return;}
+  if(a==="drop"){
+    ED.items.splice(ED.i,1);
+    if(!ED.items.length){var lid=ED.lid,ex=ED.extra;closeEditor();if(ex.length)sendFiles(lid,ex,true);return;}
+    ED.i=Math.min(ED.i,ED.items.length-1);renderEditor();return;
+  }
+  if(a==="prev"){ED.i--;renderEditor();return;}
+  if(a==="next"){ED.i++;renderEditor();return;}
+  if(a==="send"){
+    var lid2=ED.lid, items=ED.items.slice(), extra=ED.extra.slice(), btn=document.querySelector('[data-ed="send"]');
+    btn.disabled=true; btn.textContent="Готовлю фото…";
+    items.reduce(function(pr,x){return pr.then(function(acc){return exportItem(x).then(function(f){acc.push(f);return acc;});});},Promise.resolve([]))
+      .then(function(files){closeEditor();sendFiles(lid2,files.concat(extra),true);});
+  }
+}
+document.addEventListener("pointerdown",edDown);
+document.addEventListener("pointermove",edMove);
+document.addEventListener("pointerup",edUp);
+document.addEventListener("pointercancel",edUp);
+window.addEventListener("resize",function(){if(ED)editorBase();});
+document.addEventListener("click",function(e){var b=e.target.closest("[data-ed]");if(b&&ED)edAction(b.dataset.ed);});
+
 /* отправка решения */
 document.addEventListener("change",function(e){
   var t=e.target; if(!t.dataset||!t.dataset.up||!t.files||!t.files.length)return;
-  sendFiles(t.dataset.up,t.files); t.value="";
+  openEditor(t.dataset.up,t.files); t.value="";
 });
 document.addEventListener("click",function(e){
   var b=e.target.closest("[data-rm],[data-cmt],[data-csave]"); if(!b)return;
@@ -383,7 +566,7 @@ document.addEventListener("click",function(e){
   }
   if(e.target.closest("[data-close]")||e.target.hasAttribute("data-close-bg"))$("#viewer").innerHTML="";
 });
-document.addEventListener("keydown",function(e){if(e.key==="Escape")$("#viewer").innerHTML="";});
+document.addEventListener("keydown",function(e){if(e.key==="Escape"){if(ED)closeEditor();else $("#viewer").innerHTML="";}});
 
 if(TOKEN)load(); else $("#app").innerHTML='<div class="panel empty">Неверная ссылка.</div>';
 })();
