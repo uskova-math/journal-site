@@ -315,6 +315,7 @@ function studentPayload(tok) {
   const lessons = raw.map(l => ({
     id: l.id, groupId: l.groupId, date: l.date, topic: l.topic || '',
     noHw: !!l.noHw, hw: l.noHw ? '' : (l.hw || ''), count: parseInt(l.count, 10) || null,
+    labels: Array.isArray(l.labels) ? l.labels : null,
     video: l.video || '', files: l.noHw ? [] : (l.files || []), board: l.board || [],
     mark: (l.marks || {})[sid] || {},
     sub: publicSub(getDoc('submissions', subId(l.id, sid))),

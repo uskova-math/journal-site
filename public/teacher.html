@@ -312,6 +312,13 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .nw{border-left:4px solid var(--ink)}
 .nw-chip{background:var(--ink-soft);color:var(--ink)}
 .nw-chip:hover{background:var(--ink);color:var(--on-ink)}
+.tks{display:flex;flex-wrap:wrap;gap:3px;align-items:center;max-width:320px}
+.tk{min-width:28px;height:28px;padding:0 5px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font-size:13px;cursor:pointer;color:var(--muted);font-variant-numeric:tabular-nums}
+.tk:disabled{cursor:default}
+.tk[aria-pressed="true"]{background:var(--ok-soft);border-color:var(--ok);color:var(--ok);font-weight:700}
+.tk.star{border-style:dashed}
+.tk.star[aria-pressed="true"]{background:var(--ink-soft);border-color:var(--ink);color:var(--ink)}
+.tk-sum{margin-left:4px;font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap}
 .v-subbar{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line);font-size:14px}
 .v-subbar #v-del{flex-basis:100%}
 .v-subbar #v-del:empty{display:none}
@@ -605,11 +612,15 @@ function renderLesson(l,g){
     return '<button class="opt '+cls+'" data-action="'+kind+'" data-l="'+esc(l.id)+'" data-s="'+esc(s.id)+'" data-v="'+v+'" aria-pressed="'+(cur===v)+'"'+dis+'>'+label+'</button>';
   }
   function scoreCell(s){
-    var ok=okOf(l,s.id), opts='<option value="">—</option>';
-    for(var i=0;i<=cnt+2;i++)opts+='<option value="'+i+'"'+(ok===i?' selected':'')+'>'+i+(i>cnt?' ★':'')+'</option>';
-    return '<span class="score"><span class="sc-w sc-lbl">верно</span><select class="sc '+scoreCls(ok,cnt)+'" data-l="'+esc(l.id)+'" data-s="'+esc(s.id)+'" aria-label="Верно решено номеров: '+esc(s.name)+'"'+dis+'>'+opts+'</select><span class="sc-w">из '+cnt+'</span></span>';
+    var ok=okOf(l,s.id), sol=solvedOf(l,s.id), b='';
+    for(var i=1;i<=cnt+2;i++){
+      var on=!!sol&&sol.indexOf(i)>=0, lab=taskLabel(l,i,cnt);
+      b+='<button class="tk'+(i>cnt?' star':'')+'" data-action="tsk" data-l="'+esc(l.id)+'" data-s="'+esc(s.id)+'" data-i="'+i+'" aria-pressed="'+on+'" title="'+(i>cnt?'Задача со звёздочкой':'Номер '+esc(lab))+'" aria-label="'+esc(s.name)+': '+(i>cnt?'дополнительная задача':'номер '+esc(lab))+'"'+dis+'>'+esc(lab)+'</button>';
+    }
+    var sum=ok==null?'<span class="tk-sum">0 из '+cnt+'</span>':'<span class="tk-sum sc-t '+scoreCls(ok,cnt)+'"'+(sol?'':' title="Отмечено числом, без номеров"')+'>'+ok+' из '+cnt+'</span>';
+    return '<span class="score tks"><span class="sc-w sc-lbl">засчитаны</span>'+b+sum+'</span>';
   }
-  h+='<div class="marks"><div class="m-head"><span>Ученик</span><span>На занятии</span><span>'+(l.noHw?"":"Домашка")+'</span><span>'+(cnt?"Сколько верно":"")+'</span></div>';
+  h+='<div class="marks"><div class="m-head"><span>Ученик</span><span>На занятии</span><span>'+(l.noHw?"":"Домашка")+'</span><span>'+(cnt?"Засчитанные номера":"")+'</span></div>';
   h+=st.map(function(s){var m=mk(l,s.id);
     return '<div class="m-row"><span class="m-name">'+esc(s.name)+(l.noHw?'':subButton(l,s))+'</span>'+
       '<span class="opts att" role="group" aria-label="Присутствие: '+esc(s.name)+'">'+ob("att",s,"y","Был","yes",m.att)+ob("att",s,"n","Не был","no",m.att)+'</span>'+
@@ -622,6 +633,9 @@ function renderLesson(l,g){
   return h+'</div></article>';
 }
 
+function labelsOf(l){return Array.isArray(l.labels)&&l.labels.length?l.labels:null;}
+function taskLabel(l,i,cnt){if(i>cnt)return "★"+(cnt+2>cnt+1&&i===cnt+2?"2":"1");var lb=labelsOf(l);return lb&&lb[i-1]?lb[i-1]:String(i);}
+function solvedOf(l,sid){var x=mk(l,sid).solved;return Array.isArray(x)?x:null;}
 function hasCount(l){var n=parseInt(l.count,10);return !l.noHw&&n>0?n:0;}
 function okOf(l,sid){var o=mk(l,sid).ok;var n=hasCount(l);return typeof o==="number"&&n?Math.min(o,n+2):null;}
 function scoreCls(ok,n){if(ok==null||!n)return "";var r=ok/n;return r>1?"star":r>=1?"good":r>=0.5?"mid":"low";}
@@ -806,7 +820,7 @@ function setMarks(lid,patch){
 /* ---------- окно занятия ---------- */
 function openLesson(lid){
   var l=lid?findLesson(lid):null;
-  M={kind:"lesson",id:l?l.id:null,date:l?l.date:today(),topic:l?(l.topic||""):"",hw:l?(l.hw||""):"",noHw:l?!!l.noHw:false,count:l&&l.count?String(l.count):"",
+  M={kind:"lesson",id:l?l.id:null,date:l?l.date:today(),topic:l?(l.topic||""):"",hw:l?(l.hw||""):"",noHw:l?!!l.noHw:false,count:l&&l.count?String(l.count):"",labels:l&&Array.isArray(l.labels)?l.labels.join(", "):"",
      files:l?(l.files||[]).slice():[],fresh:[],removed:[],uploading:0,confirmDel:false,
      video:l?(l.video||""):"",board:l?(l.board||[]).slice():[],target:"hw"};
   M.init=lessonSnap();
@@ -825,7 +839,9 @@ function openLesson(lid){
     '<div id="m-hwwrap" class="field" style="gap:10px">'+
       '<div class="field"><label for="m-hw">Что задано</label><textarea id="m-hw" placeholder="Например: №1–5 из листка «Модуль», задача про поезда"></textarea></div>'+
       '<div class="field"><label for="m-count">Сколько номеров в домашке</label><input type="number" id="m-count" min="1" max="99" inputmode="numeric" placeholder="Например, 5" style="max-width:160px">'+
-      '<p class="hint">Тогда у каждого ученика можно будет отметить, сколько номеров решено верно. Можно оставить пустым.</p></div>'+
+      '<p class="hint">Тогда у каждого ученика можно будет отметить, какие номера засчитаны. Можно оставить пустым.</p></div>'+
+      '<div class="field"><label for="m-labels">Номера задач, если они не 1, 2, 3… (необязательно)</label><input type="text" id="m-labels" placeholder="Например: 3, 4, 5, 8а">'+
+      '<p class="hint">Через запятую. Если заполнить, количество номеров посчитается само.</p></div>'+
       '<div class="field"><span class="flabel">Файлы с заданием</span><div class="m-files" id="m-files"></div>'+
       (S.assets?'<div><label class="btn ghost" for="m-upload" style="cursor:pointer">Прикрепить файл</label><input type="file" id="m-upload" multiple accept="image/*,application/pdf,.pdf,.txt,.md,.csv" hidden></div>'+
         '<p class="hint">Картинку можно вставить через Ctrl+V (на Mac — ⌘+V) или перетащить мышкой: она попадёт в тот раздел, где вы последний раз нажимали, — «Записи с доски» или «Домашнее задание». Подходят фото, сканы и PDF до 20 МБ; файл Word сначала сохраните как PDF.</p>'
@@ -837,7 +853,7 @@ function openLesson(lid){
       '<span class="spacer"></span><button class="btn ghost" data-action="m-cancel">Отмена</button><button class="btn" id="m-save" data-action="m-save">Сохранить</button></div>'+
     '</div></div>';
   $("#modal").innerHTML=h;
-  $("#m-date").value=M.date; $("#m-topic").value=M.topic; $("#m-hw").value=M.hw; $("#m-nohw").checked=M.noHw; $("#m-count").value=M.count; $("#m-video").value=M.video;
+  $("#m-date").value=M.date; $("#m-topic").value=M.topic; $("#m-hw").value=M.hw; $("#m-nohw").checked=M.noHw; $("#m-count").value=M.count; $("#m-labels").value=M.labels; $("#m-video").value=M.video;
   syncHwWrap(); renderMFiles();
   $("#m-date").focus();
 }
@@ -878,6 +894,8 @@ function saveLesson(){
   if(M.uploading){mErr("Подождите, файл ещё загружается.");return;}
   var data={groupId:S.groupId,date:M.date||today(),topic:M.topic.trim(),hw:M.hw.trim(),noHw:!!M.noHw,files:M.files,board:M.board,video:normUrl(M.video)};
   var cn=parseInt(M.count,10); data.count=cn>0?Math.min(cn,99):null;
+  var lbs=String(M.labels||"").split(/[,;]+/).map(function(x){return x.trim().replace(/^№\s*/,"");}).filter(Boolean).slice(0,99);
+  data.labels=lbs.length?lbs:null; if(lbs.length)data.count=lbs.length;
   var removed=M.removed;
   if(M.id){
     var l=findLesson(M.id); if(l)S.lessons[S.lessons.indexOf(l)]=Object.assign({},l,data);
@@ -907,7 +925,7 @@ function deleteLesson(){
 }
 
 /* ---------- окно групп ---------- */
-function lessonSnap(){return JSON.stringify([M.date,M.topic,M.hw,!!M.noHw,String(M.count||""),M.files.map(function(f){return f.id;}),M.video,M.board.map(function(f){return f.id;})]);}
+function lessonSnap(){return JSON.stringify([M.date,M.topic,M.hw,!!M.noHw,String(M.count||""),String(M.labels||""),M.files.map(function(f){return f.id;}),M.video,M.board.map(function(f){return f.id;})]);}
 function groupsSnap(){return JSON.stringify(M.groups.map(function(g){return [g.id,g.name,!!g.deleted,g.students.map(function(s){return [s.id,s.name];})];}));}
 function tryClose(){
   if(!M)return;
@@ -1062,6 +1080,13 @@ document.addEventListener("click",function(e){
       break;}
     case "open-file": openFile(d.l,d.i,d.w); break;
     case "sub-open": openSub(d.l,d.s); break;
+    case "tsk": {
+      var tl=findLesson(d.l); if(!tl||!S.canWrite)break;
+      var tm=mk(tl,d.s), sol=Array.isArray(tm.solved)?tm.solved.slice():[], ti=+d.i, tk=sol.indexOf(ti);
+      if(tk>=0)sol.splice(tk,1); else sol.push(ti);
+      sol.sort(function(a,b){return a-b;});
+      var tp={}; tp[d.s]={solved:sol,ok:sol.length}; if(!tm.hw&&sol.length)tp[d.s].hw="done";
+      setMarks(d.l,tp); break;}
     case "v-del-file": askSubDel("file"); break;
     case "v-del-all": askSubDel("all"); break;
     case "v-del-no": $("#v-del").innerHTML=""; break;
@@ -1075,7 +1100,7 @@ document.addEventListener("click",function(e){
 document.addEventListener("input",function(e){
   if(!M)return; var t=e.target;
   if(M.kind==="lesson"){
-    if(t.id==="m-date")M.date=t.value; else if(t.id==="m-topic")M.topic=t.value; else if(t.id==="m-hw")M.hw=t.value; else if(t.id==="m-count")M.count=t.value; else if(t.id==="m-video")M.video=t.value;
+    if(t.id==="m-date")M.date=t.value; else if(t.id==="m-topic")M.topic=t.value; else if(t.id==="m-hw")M.hw=t.value; else if(t.id==="m-count")M.count=t.value; else if(t.id==="m-labels")M.labels=t.value; else if(t.id==="m-video")M.video=t.value;
   } else if(M.kind==="groups"){
     if(t.dataset.gname){gFind(t.dataset.gname).name=t.value;}
     else if(t.dataset.sname){var g=gFind(t.dataset.g);g.students.forEach(function(s){if(s.id===t.dataset.sname)s.name=t.value;});}

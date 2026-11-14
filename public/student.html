@@ -80,6 +80,12 @@ h2{font-size:16px;margin:0 0 10px}
 .sub-x{position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--miss);cursor:pointer;font-size:15px;line-height:1;display:grid;place-items:center}
 .sub-act{display:flex;gap:8px;flex-wrap:wrap}
 .hwsub.drop{background:var(--ink-soft)}
+.tks-s{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:8px;font-size:13px}
+.tks-l{color:var(--muted);margin-right:2px}
+.home-hw .tks-s{margin:-4px 0 10px}
+.tk-s{border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tk-s.on{background:var(--ok-soft);border-color:var(--ok);color:var(--ok);font-weight:700}
+.tk-s.star{background:var(--ink-soft);border-color:var(--ink);color:var(--ink);font-weight:700}
 @media (hover:none){.desk-only{display:none}}
 .sub-act label.btn{cursor:pointer}
 .sub-cbox{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
@@ -170,12 +176,23 @@ function scoreChip(l){
   var r=o/l.count, cls=r>1?"star":r>=1?"done":r>=.5?"part":"none";
   return '<span class="chip '+cls+'">Верно '+o+' из '+l.count+(r>1?" ★":"")+'</span>';
 }
+function solvedRow(l){
+  var sol=l.mark&&Array.isArray(l.mark.solved)?l.mark.solved:null;
+  if(l.noHw||!l.count||!sol||!l.mark.hw)return "";
+  var h='';
+  for(var i=1;i<=l.count+2;i++){
+    var on=sol.indexOf(i)>=0; if(i>l.count&&!on)continue;
+    var lab=i>l.count?"★":(l.labels&&l.labels[i-1]?"№"+l.labels[i-1]:"№"+i);
+    h+='<span class="tk-s'+(on?(i>l.count?" star":" on"):"")+'">'+esc(lab)+(on?" ✓":"")+'</span>';
+  }
+  return '<div class="tks-s" aria-label="Засчитанные номера"><span class="tks-l">Засчитаны:</span>'+h+'</div>';
+}
 function marks(l){
   var h="";
   if(l.mark.att==="y")h+='<span class="chip done">Был на занятии</span>';
   else if(l.mark.att==="n")h+='<span class="chip none">Не был</span>';
   if(!l.noHw){var st=hwState(l);h+='<span class="chip '+st+'">'+hwLabel(l)+'</span>'+scoreChip(l);}
-  return h?'<div class="l-marks">'+h+'</div>':"";
+  return h?'<div class="l-marks">'+h+'</div>'+solvedRow(l):"";
 }
 function rec(l){
   if(!l.video&&!(l.board&&l.board.length))return "";
@@ -200,7 +217,7 @@ function subBlock(l){
   var h='<div class="hwsub" id="sub-'+esc(l.id)+'"><div class="label">Моё решение</div>';
   if(files.length||(sub&&sub.comment)){
     h+='<p class="sub-st">Отправлено '+esc(fTime.format(new Date(sub.updated)))+' · '+
-      (graded?'<b>проверено</b>':sub.seen?'преподаватель посмотрел':'ждёт проверки')+'</p>';
+      (graded&&sub.seen?'<b>проверено</b>':graded?'добавлено после проверки, ждёт проверки':sub.seen?'преподаватель посмотрел':'ждёт проверки')+'</p>';
     if(files.length)h+='<div class="files">'+files.map(function(f){
       return '<span class="sub-f">'+fileBtn(f)+(graded?'':'<button type="button" class="sub-x" data-rm="'+esc(f.id)+'" data-l="'+esc(l.id)+'" aria-label="Удалить '+esc(f.name)+'" title="Удалить">×</button>')+'</span>';
     }).join("")+'</div>';
@@ -278,7 +295,7 @@ function renderHome(){
     var nx=nextLessonAfter(cur), st=hwState(cur);
     h+='<section class="panel home-hw"><h2>Домашка</h2><div class="due">Задано '+esc(fmtDay(cur.date))+(nx?", сдать к "+esc(fmtDay(nx.date)):", сдать к следующему занятию")+
       (cur.topic?" · "+esc(cur.topic):"")+'</div>'+
-      '<div class="chips" style="margin-bottom:10px"><span class="chip '+st+'">'+hwLabel(cur)+'</span>'+scoreChip(cur)+'</div>'+
+      '<div class="chips" style="margin-bottom:10px"><span class="chip '+st+'">'+hwLabel(cur)+'</span>'+scoreChip(cur)+'</div>'+solvedRow(cur)+
       (cur.hw?'<p class="hw-text">'+linkify(cur.hw)+'</p>':"")+files(cur.files)+subBlock(cur)+'</section>';
   }
   var debts=withHw.filter(function(l){return l!==cur&&hwState(l)!=="done"&&l.date<=td;});
