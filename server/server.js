@@ -70,13 +70,15 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS student_links (
     student_id TEXT PRIMARY KEY, token TEXT NOT NULL UNIQUE, created INTEGER NOT NULL);
 `);
+try { db.exec('ALTER TABLE files ADD COLUMN owner TEXT'); } catch { /* уже есть */ }
 const Q = {
   list: db.prepare('SELECT id, data, updated FROM docs WHERE coll = ?'),
   get: db.prepare('SELECT data FROM docs WHERE coll = ? AND id = ?'),
   put: db.prepare('INSERT INTO docs (coll, id, data, updated) VALUES (?, ?, ?, ?) ON CONFLICT(coll, id) DO UPDATE SET data = excluded.data, updated = excluded.updated'),
   del: db.prepare('DELETE FROM docs WHERE coll = ? AND id = ?'),
   delColl: db.prepare('DELETE FROM docs WHERE coll = ?'),
-  fileAdd: db.prepare('INSERT OR REPLACE INTO files (id, name, mime, size, created) VALUES (?, ?, ?, ?, ?)'),
+  fileAdd: db.prepare('INSERT OR REPLACE INTO files (id, name, mime, size, created, owner) VALUES (?, ?, ?, ?, ?, ?)'),
+  fileRecent: db.prepare('SELECT COUNT(*) AS n FROM files WHERE owner = ? AND created > ?'),
   fileGet: db.prepare('SELECT * FROM files WHERE id = ?'),
   fileDel: db.prepare('DELETE FROM files WHERE id = ?'),
   sesAdd: db.prepare('INSERT INTO sessions (token, created) VALUES (?, ?)'),
@@ -88,7 +90,7 @@ const Q = {
   linkAll: db.prepare('SELECT student_id, token FROM student_links'),
   linkPut: db.prepare('INSERT INTO student_links (student_id, token, created) VALUES (?, ?, ?) ON CONFLICT(student_id) DO UPDATE SET token = excluded.token, created = excluded.created'),
 };
-const COLLS = new Set(['groups', 'lessons']);
+const COLLS = new Set(['groups', 'lessons', 'submissions']);
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 function allDocs(coll) { return Q.list.all(coll).map(r => ({ id: r.id, data: JSON.parse(r.data), updated: r.updated })); }
 function getDoc(coll, id) { const r = Q.get.get(coll, id); return r ? JSON.parse(r.data) : null; }
@@ -178,10 +180,10 @@ function safeMime(m) {
   return 'application/octet-stream';
 }
 function fileId() { return crypto.randomBytes(16).toString('hex'); }
-function storeFile(buf, name, mime, id) {
+function storeFile(buf, name, mime, id, owner) {
   id = id || fileId();
   fs.writeFileSync(path.join(FILES_DIR, id), buf);
-  Q.fileAdd.run(id, String(name || 'файл').slice(0, 200), safeMime(mime), buf.length, Date.now());
+  Q.fileAdd.run(id, String(name || 'файл').slice(0, 200), safeMime(mime), buf.length, Date.now(), owner || 'teacher');
   return { id, url: '/_blob/' + id, contentType: safeMime(mime), sizeBytes: buf.length };
 }
 function serveFile(req, res, id, download) {
@@ -224,6 +226,67 @@ function metricsFor(lessons, sid) {
   }
   return { att: (y + n) ? y / (y + n) * 100 : null, hw: hn ? hs / hn * 100 : null, ok: on ? ok / on * 100 : null };
 }
+function subId(lessonId, sid) { return (lessonId + '_' + sid).slice(0, 64); }
+function publicSub(d) {
+  if (!d) return null;
+  return { files: d.files || [], comment: d.comment || '', updated: d.updated || 0, seen: !!d.seenAt && d.seenAt >= (d.updated || 0) };
+}
+function studentCtx(tok) {
+  const row = Q.linkByTok.get(tok);
+  if (!row) return null;
+  const sid = row.student_id;
+  const groups = allDocs('groups').filter(g => (g.data.students || []).some(s => s.id === sid));
+  if (!groups.length) return null;
+  return { sid, gids: new Set(groups.map(g => g.id)) };
+}
+const STUDENT_TYPES = /^(image\/(jpeg|png|webp|gif|heic|heif)|application\/pdf)$/;
+async function studentApi(req, res, tok, action) {
+  const ctx = studentCtx(tok);
+  if (!ctx) return json(res, 404, { error: 'Ссылка не найдена.' });
+  const { sid } = ctx;
+  if (action === 'upload') {
+    if (Q.fileRecent.get(sid, Date.now() - 3600e3).n >= 60) return json(res, 429, { error: 'Слишком много файлов за час. Попробуйте позже.' });
+    const mime = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    if (!STUDENT_TYPES.test(mime)) return json(res, 400, { error: 'Можно отправлять только фото и PDF.' });
+    const buf = await readBody(req, 20 * 1024 * 1024);
+    if (!buf.length) return json(res, 400, { error: 'Пустой файл.' });
+    let name = 'решение';
+    try { name = decodeURIComponent(String(req.headers['x-filename'] || 'решение')); } catch {}
+    const f = storeFile(buf, name, mime, null, sid);
+    return json(res, 200, { id: f.id, url: f.url, name: name.slice(0, 200), type: f.contentType, size: f.sizeBytes });
+  }
+  const body = await readJson(req);
+  const lessonId = String(body.lessonId || '');
+  const lesson = ID_RE.test(lessonId) ? getDoc('lessons', lessonId) : null;
+  if (!lesson || !ctx.gids.has(lesson.groupId)) return json(res, 404, { error: 'Занятие не найдено.' });
+  const id = subId(lessonId, sid);
+  const cur = getDoc('submissions', id) || { lessonId, studentId: sid, groupId: lesson.groupId, files: [], comment: '', created: Date.now() };
+  if (action === 'submit') {
+    const add = [];
+    for (const fid of Array.isArray(body.files) ? body.files.slice(0, 30) : []) {
+      const f = typeof fid === 'string' && Q.fileGet.get(fid);
+      if (!f || f.owner !== sid || cur.files.some(x => x.id === fid)) continue;
+      add.push({ id: f.id, name: f.name, type: f.mime, size: f.size, url: '/_blob/' + f.id });
+    }
+    if (!add.length && typeof body.comment !== 'string') return json(res, 400, { error: 'Нечего отправлять.' });
+    cur.files = cur.files.concat(add).slice(0, 40);
+    if (typeof body.comment === 'string') cur.comment = body.comment.slice(0, 2000);
+    cur.updated = Date.now();
+    putDoc('submissions', id, cur);
+    return json(res, 200, { sub: publicSub(cur) });
+  }
+  if (action === 'remove') {
+    const fid = String(body.fileId || '');
+    const f = Q.fileGet.get(fid);
+    if (!f || f.owner !== sid) return json(res, 404, { error: 'Файл не найден.' });
+    cur.files = cur.files.filter(x => x.id !== fid);
+    cur.updated = Date.now();
+    if (cur.files.length || cur.comment) putDoc('submissions', id, cur); else Q.del.run('submissions', id);
+    Q.fileDel.run(fid); fs.rm(path.join(FILES_DIR, fid), { force: true }, () => {});
+    return json(res, 200, { sub: cur.files.length || cur.comment ? publicSub(cur) : null });
+  }
+  return json(res, 404, { error: 'Не найдено.' });
+}
 function studentPayload(tok) {
   const row = Q.linkByTok.get(tok);
   if (!row) return null;
@@ -254,6 +317,7 @@ function studentPayload(tok) {
     noHw: !!l.noHw, hw: l.noHw ? '' : (l.hw || ''), count: parseInt(l.count, 10) || null,
     video: l.video || '', files: l.noHw ? [] : (l.files || []), board: l.board || [],
     mark: (l.marks || {})[sid] || {},
+    sub: publicSub(getDoc('submissions', subId(l.id, sid))),
   }));
   return {
     student: { id: sid, name: me.name },
@@ -358,6 +422,9 @@ async function handle(req, res) {
   }
   if ((mm = /^\/_blob\/([A-Za-z0-9_-]{6,64})$/.exec(p)) && (m === 'GET' || m === 'HEAD')) {
     return serveFile(req, res, mm[1], url.searchParams.has('download'));
+  }
+  if ((mm = /^\/api\/s\/([A-Za-z0-9_-]{10,64})\/(upload|submit|remove)$/.exec(p)) && m === 'POST') {
+    return studentApi(req, res, mm[1], mm[2]);
   }
   if ((mm = /^\/api\/s\/([A-Za-z0-9_-]{10,64})$/.exec(p)) && m === 'GET') {
     const data = studentPayload(mm[1]);

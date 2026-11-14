@@ -306,6 +306,13 @@ button.file{cursor:pointer;font:inherit;text-align:left}
 .lk-url{flex:1;min-width:180px;border:1px solid var(--line);background:var(--paper);border-radius:7px;padding:5px 8px;font-size:13px}
 .lk-btns{display:flex;gap:6px}
 a.x{text-decoration:none;display:inline-flex;align-items:center}
+.m-name{display:flex;flex-direction:column;align-items:flex-start;gap:3px}
+.sub-b{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:1px 9px;font-size:12px;font-weight:600;cursor:pointer}
+.sub-b.new{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
+.nw{border-left:4px solid var(--ink)}
+.nw-chip{background:var(--ink-soft);color:var(--ink)}
+.nw-chip:hover{background:var(--ink);color:var(--on-ink)}
+.v-note{margin:0;padding:10px 14px;background:var(--ink-soft);white-space:pre-wrap;font-size:14px;overflow-wrap:anywhere}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
@@ -317,7 +324,7 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 <script>
 (function(){
 "use strict";
-var S = {db:null, assets:null, canWrite:true, groups:[], lessons:[], groupId:null, view:"list",
+var S = {db:null, assets:null, canWrite:true, groups:[], lessons:[], subs:[], groupId:null, view:"list",
          loaded:{g:false,l:false}, stale:false, fatal:null, notice:null};
 var M = null; // открытое окно
 S.period = (function(){try{var v=JSON.parse(localStorage.getItem("tj-period")||"null");if(v&&v.preset)return v;}catch(e){}return {preset:"all"};})();
@@ -386,6 +393,7 @@ function render(){
   }).join("")+'</nav>';
   if((g.students||[]).some(function(s){return /^Ученик \d+$/.test(s.name);})&&S.canWrite)
     h+='<div class="hint-box">Впишите настоящие имена: кнопка «Группы и ученики» справа вверху.</div>';
+  h+=renderNewWorks(g);
   h+=renderDebts(g,ls);
   h+='<div class="toolbar"><div class="seg" role="group" aria-label="Вид">'+
      '<button data-action="view" data-v="list" aria-pressed="'+(S.view==="list")+'">Занятия</button>'+
@@ -461,6 +469,37 @@ function renderRec(l){
     (l.video?'<a class="vid" href="'+esc(l.video)+'" target="_blank" rel="noopener"><span class="vid-ico" aria-hidden="true">▶</span>Смотреть видео<span class="vid-host">'+esc(hostOf(l.video))+'</span></a>':'')+
     (b.length?'<div class="rec-sub">Записи с доски</div>'+renderFiles(b,l.id,"board"):'')+'</div>';
 }
+/* ---------- работы учеников ---------- */
+function subFor(lid,sid){for(var i=0;i<S.subs.length;i++){var x=S.subs[i];if(x.lessonId===lid&&x.studentId===sid)return x;}return null;}
+function subUnseen(x){return !!x&&((x.files&&x.files.length)||x.comment)&&!(x.seenAt>=(x.updated||0));}
+var fSubTime=new Intl.DateTimeFormat("ru-RU",{day:"numeric",month:"long",hour:"2-digit",minute:"2-digit"});
+function renderNewWorks(g){
+  var names={};(g.students||[]).forEach(function(s){names[s.id]=s.name;});
+  var list=S.subs.filter(function(x){return names[x.studentId]&&subUnseen(x)&&findLesson(x.lessonId);})
+    .sort(function(a,b){return (b.updated||0)-(a.updated||0);});
+  if(!list.length)return "";
+  return '<section class="panel nw"><div class="debts-head"><h2>Новые работы</h2><span class="muted">'+list.length+' '+plural(list.length,"работа ждёт","работы ждут","работ ждут")+' проверки</span></div><div class="chips">'+
+    list.map(function(x){var l=findLesson(x.lessonId), n=(x.files||[]).length;
+      return '<button class="chip nw-chip" data-action="sub-open" data-l="'+esc(x.lessonId)+'" data-s="'+esc(x.studentId)+'">'+esc(names[x.studentId])+' · к '+fmtShort(l.date)+' · '+(n?n+' '+plural(n,"файл","файла","файлов"):"комментарий")+'</button>';
+    }).join("")+'</div></section>';
+}
+function subButton(l,s){
+  var x=subFor(l.id,s.id); if(!x||!((x.files&&x.files.length)||x.comment))return "";
+  var n=(x.files||[]).length;
+  return '<button class="sub-b'+(subUnseen(x)?' new':'')+'" data-action="sub-open" data-l="'+esc(l.id)+'" data-s="'+esc(s.id)+'">Решение'+(n?' · '+n+' '+plural(n,"файл","файла","файлов"):'')+'</button>';
+}
+function openSub(lid,sid){
+  var x=subFor(lid,sid), l=findLesson(lid), g=curGroup(); if(!x)return;
+  var st=(g&&g.students||[]).filter(function(s){return s.id===sid;})[0];
+  var note=(st?st.name+' · ':'')+'к занятию '+(l?fmtLong(l.date):'')+' · прислано '+fSubTime.format(new Date(x.updated||Date.now()))+(x.comment?'\nКомментарий: '+x.comment:'');
+  if(x.files&&x.files.length){V={files:x.files,i:0,note:note};renderViewer();}
+  else{V={files:[{id:'',name:'Комментарий',type:'text/note'}],i:0,note:note};renderViewer();}
+  if(subUnseen(x)){
+    var now=Date.now(); x.seenAt=now; render();
+    write("submissions/"+x.id,function(){return S.db.doc("submissions/"+x.id).update({seenAt:now});});
+  }
+}
+
 function renderViewer(){
   var box=$("#viewer"); if(!V){box.innerHTML="";return;}
   var f=V.files[V.i], n=V.files.length;
@@ -469,9 +508,11 @@ function renderViewer(){
     '<span class="v-btns">'+(n>1?'<button class="x" data-action="v-prev" aria-label="Предыдущий файл">←</button><button class="x" data-action="v-next" aria-label="Следующий файл">→</button>':'')+
     (dl?'<button class="btn ghost" data-action="v-save">Скачать</button>':'')+
     '<button class="btn" data-action="v-close">Закрыть</button></span></div>'+
+    (V.note?'<p class="v-note">'+esc(V.note)+'</p>':'')+
     '<p class="err" id="v-err"></p><div class="v-body" id="v-body"><p class="muted">Открываю…</p></div></div></div>';
   var body=$("#v-body"), my=V;
   var t=f.type||"";
+  if(t==="text/note"){body.innerHTML='<p class="muted">Ученик прислал только комментарий, он показан выше.</p>';return;}
   if(/^image\//.test(t)){
     var img=new Image(); img.alt=f.name; img.className="v-img";
     img.onload=function(){if(V===my){body.innerHTML="";body.appendChild(img);}};
@@ -541,7 +582,7 @@ function renderLesson(l,g){
   }
   h+='<div class="marks"><div class="m-head"><span>Ученик</span><span>На занятии</span><span>'+(l.noHw?"":"Домашка")+'</span><span>'+(cnt?"Сколько верно":"")+'</span></div>';
   h+=st.map(function(s){var m=mk(l,s.id);
-    return '<div class="m-row"><span class="m-name">'+esc(s.name)+'</span>'+
+    return '<div class="m-row"><span class="m-name">'+esc(s.name)+(l.noHw?'':subButton(l,s))+'</span>'+
       '<span class="opts att" role="group" aria-label="Присутствие: '+esc(s.name)+'">'+ob("att",s,"y","Был","yes",m.att)+ob("att",s,"n","Не был","no",m.att)+'</span>'+
       (l.noHw?'<span class="hwo"></span>':'<span class="opts hwo" role="group" aria-label="Домашка: '+esc(s.name)+'">'+ob("hw",s,"done","Сдал","yes",m.hw)+ob("hw",s,"part","Частично","half",m.hw)+ob("hw",s,"none","Нет","no",m.hw)+'</span>')+
       (cnt?scoreCell(s):'<span></span>')+
@@ -991,6 +1032,7 @@ document.addEventListener("click",function(e){
       if(still&&still.disabled){var other=document.querySelector('[data-action="'+(a==="s-up"?"s-down":"s-up")+'"][data-s="'+d.s+'"]');if(other)other.focus();}
       break;}
     case "open-file": openFile(d.l,d.i,d.w); break;
+    case "sub-open": openSub(d.l,d.s); break;
     case "v-close": V=null; renderViewer(); break;
     case "v-prev": V.i=(V.i-1+V.files.length)%V.files.length; renderViewer(); break;
     case "v-next": V.i=(V.i+1)%V.files.length; renderViewer(); break;
@@ -1232,6 +1274,10 @@ function init(){
       S.lessons=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
       S.loaded.l=true; settle(snap.metadata); render();
     },fail);
+    if(window.SITE)db.collection("submissions").onSnapshot(function(snap){
+      S.subs=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
+      render();
+    },function(){});
   });
   claude.use("assets").then(function(a){S.assets=a||null;});
   claude.use("downloads").then(function(d){dl=d||null;}).catch(function(){});

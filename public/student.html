@@ -70,6 +70,21 @@ h2{font-size:16px;margin:0 0 10px}
 .diff{font-size:13px;border-radius:999px;padding:2px 9px;white-space:nowrap}
 .diff.up{background:var(--ok-soft);color:var(--ok)} .diff.down{background:var(--miss-soft);color:var(--miss)} .diff.same{background:var(--wait-soft);color:var(--wait)}
 .hint{font-size:13px;color:var(--muted);margin:0}
+.hwsub{border:1px dashed var(--ink);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.hwsub .label{margin:0}
+.sub-st{margin:0;font-size:14px;color:var(--muted)}
+.sub-st b{color:var(--ok)}
+.sub-c{margin:0;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.hwsub .files{margin-top:0}
+.sub-f{position:relative;display:inline-flex}
+.sub-x{position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--miss);cursor:pointer;font-size:15px;line-height:1;display:grid;place-items:center}
+.sub-act{display:flex;gap:8px;flex-wrap:wrap}
+.sub-act label.btn{cursor:pointer}
+.sub-cbox{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.sub-cbox[hidden]{display:none}
+.sub-cbox textarea{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 10px;resize:vertical}
+.err{color:var(--miss);font-size:14px;margin:0}
+.err:empty{display:none}
 .per{display:flex;flex-wrap:wrap;gap:6px}
 .per-b{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;cursor:pointer;font-weight:600;color:var(--muted)}
 .per-b[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
@@ -108,6 +123,7 @@ function extOf(n){var m=/\.([a-z0-9]{1,5})$/i.exec(n||"");return m?m[1]:"фай�
 
 function hwState(l){var v=l.mark.hw;return v==="done"||v==="part"||v==="none"?v:"wait";}
 var HW_TXT={done:"Сдано",part:"Сдано частично",none:"Не сдано",wait:"Ждём домашку"};
+function hwLabel(l){var st=hwState(l);return st==="wait"&&l.sub&&l.sub.files&&l.sub.files.length?"Отправлено, на проверке":HW_TXT[st];}
 
 /* ---------- данные ---------- */
 function load(){
@@ -140,7 +156,7 @@ function marks(l){
   var h="";
   if(l.mark.att==="y")h+='<span class="chip done">Был на занятии</span>';
   else if(l.mark.att==="n")h+='<span class="chip none">Не был</span>';
-  if(!l.noHw){var st=hwState(l);h+='<span class="chip '+st+'">'+HW_TXT[st]+'</span>'+scoreChip(l);}
+  if(!l.noHw){var st=hwState(l);h+='<span class="chip '+st+'">'+hwLabel(l)+'</span>'+scoreChip(l);}
   return h?'<div class="l-marks">'+h+'</div>':"";
 }
 function rec(l){
@@ -156,7 +172,79 @@ function hwBlock(l){
 }
 function lessonCard(l){
   return '<article class="lesson" id="l-'+esc(l.id)+'"><div><div class="l-date">'+esc(fmtLong(l.date))+'</div>'+
-    (l.topic?'<div class="l-topic">'+esc(l.topic)+'</div>':"")+marks(l)+'</div>'+rec(l)+hwBlock(l)+'</article>';
+    (l.topic?'<div class="l-topic">'+esc(l.topic)+'</div>':"")+marks(l)+'</div>'+rec(l)+hwBlock(l)+subBlock(l)+'</article>';
+}
+var fTime=new Intl.DateTimeFormat("ru-RU",{day:"numeric",month:"long",hour:"2-digit",minute:"2-digit"});
+var UP={}; // идёт загрузка: lessonId -> текст
+function subBlock(l){
+  if(l.noHw)return "";
+  var sub=l.sub, graded=!!l.mark.hw, files=(sub&&sub.files)||[];
+  var h='<div class="hwsub" id="sub-'+esc(l.id)+'"><div class="label">Моё решение</div>';
+  if(files.length||(sub&&sub.comment)){
+    h+='<p class="sub-st">Отправлено '+esc(fTime.format(new Date(sub.updated)))+' · '+
+      (graded?'<b>проверено</b>':sub.seen?'преподаватель посмотрел':'ждёт проверки')+'</p>';
+    if(files.length)h+='<div class="files">'+files.map(function(f){
+      return '<span class="sub-f">'+fileBtn(f)+(graded?'':'<button type="button" class="sub-x" data-rm="'+esc(f.id)+'" data-l="'+esc(l.id)+'" aria-label="Удалить '+esc(f.name)+'" title="Удалить">×</button>')+'</span>';
+    }).join("")+'</div>';
+    if(sub.comment)h+='<p class="sub-c">Комментарий: '+esc(sub.comment)+'</p>';
+  }
+  if(UP[l.id])h+='<p class="sub-st" id="prog-'+esc(l.id)+'">'+esc(UP[l.id])+'</p>';
+  else{
+    h+='<div class="sub-act"><label class="btn" for="up-'+esc(l.id)+'">'+(files.length?'Добавить ещё фото':'Отправить решение')+'</label>'+
+      '<input type="file" id="up-'+esc(l.id)+'" data-up="'+esc(l.id)+'" multiple accept="image/*,application/pdf" hidden>'+
+      '<button type="button" class="btn ghost" data-cmt="'+esc(l.id)+'">'+(sub&&sub.comment?'Изменить комментарий':'Комментарий')+'</button></div>'+
+      '<div class="sub-cbox" id="cbox-'+esc(l.id)+'" hidden><textarea id="ct-'+esc(l.id)+'" rows="3" placeholder="Например: в №3 не понял, как начать">'+esc((sub&&sub.comment)||"")+'</textarea>'+
+      '<button type="button" class="btn" data-csave="'+esc(l.id)+'">Отправить комментарий</button></div>';
+    if(!files.length)h+='<p class="hint">Сфотографируйте решение в тетради или выберите фото из галереи. Можно сразу несколько.</p>';
+  }
+  return h+'<p class="err" id="err-'+esc(l.id)+'" role="alert"></p></div>';
+}
+function api(path,body,headers){
+  return fetch("/api/s/"+TOKEN+path,{method:"POST",credentials:"omit",headers:headers||{"Content-Type":"application/json"},body:body}).then(function(r){
+    return r.json().catch(function(){return {};}).then(function(j){if(!r.ok)throw new Error(j.error||"Ошибка "+r.status);return j;});
+  },function(){throw new Error("Нет связи с сайтом. Проверьте интернет.");});
+}
+function compress(file){
+  if(!/^image\/(jpeg|png|webp)$/.test(file.type))return Promise.resolve(file);
+  return new Promise(function(res){
+    var url=URL.createObjectURL(file), img=new Image();
+    img.onload=function(){
+      var max=2000, w=img.naturalWidth, h=img.naturalHeight, k=Math.min(1,max/Math.max(w,h));
+      w=Math.round(w*k); h=Math.round(h*k);
+      var c=document.createElement("canvas"); c.width=w; c.height=h;
+      var x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,w,h); x.drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      c.toBlob(function(b){
+        if(!b||b.size>=file.size)return res(file);
+        res(new File([b],(file.name||"фото").replace(/\.[^.]+$/,"")+".jpg",{type:"image/jpeg"}));
+      },"image/jpeg",0.82);
+    };
+    img.onerror=function(){URL.revokeObjectURL(url);res(file);};
+    img.src=url;
+  });
+}
+function findL(id){for(var i=0;i<D.lessons.length;i++)if(D.lessons[i].id===id)return D.lessons[i];return null;}
+function keepScroll(fn){var y=window.scrollY;fn();window.scrollTo(0,y);}
+function showErr(lid,t){var e=document.getElementById("err-"+lid);if(e)e.textContent=t||"";}
+function sendFiles(lid,list){
+  var files=Array.prototype.slice.call(list,0,20), ids=[], done=0, failed=null;
+  if(!files.length)return;
+  UP[lid]="Загружаю фото: 0 из "+files.length+"…"; keepScroll(render);
+  var chain=Promise.resolve();
+  files.forEach(function(f){
+    chain=chain.then(function(){return compress(f);}).then(function(cf){
+      if(cf.size>20*1024*1024)throw new Error("«"+f.name+"» больше 20 МБ.");
+      return api("/upload",cf,{"Content-Type":cf.type||"application/octet-stream","X-Filename":encodeURIComponent(cf.name||"фото")});
+    }).then(function(r){ids.push(r.id);},function(e){failed=failed||e.message;}).then(function(){
+      done++; UP[lid]="Загружаю фото: "+done+" из "+files.length+"…";
+      var st=document.getElementById("prog-"+lid); if(st)st.textContent=UP[lid];
+    });
+  });
+  chain.then(function(){
+    if(!ids.length)throw new Error(failed||"Не получилось загрузить фото.");
+    return api("/submit",JSON.stringify({lessonId:lid,files:ids}));
+  }).then(function(r){var l=findL(lid);if(l)l.sub=r.sub;delete UP[lid];keepScroll(render);if(failed)showErr(lid,"Часть файлов не загрузилась: "+failed);},
+    function(e){delete UP[lid];keepScroll(render);showErr(lid,e.message);});
 }
 function nextLessonAfter(l){
   var later=D.lessons.filter(function(x){return x.groupId===l.groupId&&x.date>l.date;});
@@ -172,12 +260,13 @@ function renderHome(){
     var nx=nextLessonAfter(cur), st=hwState(cur);
     h+='<section class="panel home-hw"><h2>Домашка</h2><div class="due">Задано '+esc(fmtDay(cur.date))+(nx?", сдать к "+esc(fmtDay(nx.date)):", сдать к следующему занятию")+
       (cur.topic?" · "+esc(cur.topic):"")+'</div>'+
-      '<div class="chips" style="margin-bottom:10px"><span class="chip '+st+'">'+HW_TXT[st]+'</span>'+scoreChip(cur)+'</div>'+
-      (cur.hw?'<p class="hw-text">'+linkify(cur.hw)+'</p>':"")+files(cur.files)+'</section>';
+      '<div class="chips" style="margin-bottom:10px"><span class="chip '+st+'">'+hwLabel(cur)+'</span>'+scoreChip(cur)+'</div>'+
+      (cur.hw?'<p class="hw-text">'+linkify(cur.hw)+'</p>':"")+files(cur.files)+subBlock(cur)+'</section>';
   }
   var debts=withHw.filter(function(l){return l!==cur&&hwState(l)!=="done"&&l.date<=td;});
   h+='<section class="panel"><h2>Не сдано</h2>'+(debts.length?'<div class="chips">'+debts.map(function(l){
-      var st=hwState(l);return '<a class="chip '+st+'" href="#l-'+esc(l.id)+'">'+fmtDay(l.date)+' · '+(st==="part"?"частично":st==="none"?"не сдано":"ждём")+'</a>';}).join("")+'</div>'+
+      var st=hwState(l), sent=st==="wait"&&l.sub&&l.sub.files&&l.sub.files.length;
+      return '<a class="chip '+(sent?"star":st)+'" href="#l-'+esc(l.id)+'">'+fmtDay(l.date)+' · '+(sent?"отправлено, на проверке":st==="part"?"частично":st==="none"?"не сдано":"ждём")+'</a>';}).join("")+'</div>'+
       '<p class="hint" style="margin-top:8px">Нажмите на дату, чтобы открыть занятие и задание.</p>'
     :'<p class="empty" style="margin:0">Долгов нет. Так держать!</p>')+'</section>';
   var last=D.lessons.filter(function(l){return l.date<=td;})[0];
@@ -250,6 +339,28 @@ function route(){
   VIEW=hsh==="lessons"||hsh==="stats"?hsh:"home"; render(); window.scrollTo(0,0);
 }
 window.addEventListener("hashchange",route);
+
+/* отправка решения */
+document.addEventListener("change",function(e){
+  var t=e.target; if(!t.dataset||!t.dataset.up||!t.files||!t.files.length)return;
+  sendFiles(t.dataset.up,t.files); t.value="";
+});
+document.addEventListener("click",function(e){
+  var b=e.target.closest("[data-rm],[data-cmt],[data-csave]"); if(!b)return;
+  var lid=b.dataset.l||b.dataset.cmt||b.dataset.csave;
+  if(b.dataset.cmt){var box=document.getElementById("cbox-"+lid);box.hidden=!box.hidden;if(!box.hidden)box.querySelector("textarea").focus();return;}
+  if(b.dataset.csave){
+    var txt=document.getElementById("ct-"+lid).value.trim(); b.disabled=true;
+    api("/submit",JSON.stringify({lessonId:lid,comment:txt})).then(function(r){var l=findL(lid);if(l)l.sub=r.sub;keepScroll(render);},
+      function(x){b.disabled=false;showErr(lid,x.message);});
+    return;
+  }
+  if(b.dataset.rm){
+    b.disabled=true;
+    api("/remove",JSON.stringify({lessonId:lid,fileId:b.dataset.rm})).then(function(r){var l=findL(lid);if(l)l.sub=r.sub;keepScroll(render);},
+      function(x){b.disabled=false;showErr(lid,x.message);});
+  }
+});
 
 /* выбор периода в статистике */
 document.addEventListener("click",function(e){var b=e.target.closest("[data-per]");if(!b)return;PER=b.dataset.per;render();});
