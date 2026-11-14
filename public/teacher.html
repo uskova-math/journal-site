@@ -312,6 +312,10 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .nw{border-left:4px solid var(--ink)}
 .nw-chip{background:var(--ink-soft);color:var(--ink)}
 .nw-chip:hover{background:var(--ink);color:var(--on-ink)}
+.v-subbar{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line);font-size:14px}
+.v-subbar #v-del{flex-basis:100%}
+.v-subbar #v-del:empty{display:none}
+.danger-link{color:var(--miss)}
 .v-note{margin:0;padding:10px 14px;background:var(--ink-soft);white-space:pre-wrap;font-size:14px;overflow-wrap:anywhere}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;scroll-behavior:auto!important}}
 </style>
@@ -492,14 +496,37 @@ function openSub(lid,sid){
   var x=subFor(lid,sid), l=findLesson(lid), g=curGroup(); if(!x)return;
   var st=(g&&g.students||[]).filter(function(s){return s.id===sid;})[0];
   var note=(st?st.name+' · ':'')+'к занятию '+(l?fmtLong(l.date):'')+' · прислано '+fSubTime.format(new Date(x.updated||Date.now()))+(x.comment?'\nКомментарий: '+x.comment:'');
-  if(x.files&&x.files.length){V={files:x.files,i:0,note:note};renderViewer();}
-  else{V={files:[{id:'',name:'Комментарий',type:'text/note'}],i:0,note:note};renderViewer();}
+  if(x.files&&x.files.length){V={files:x.files,i:0,note:note,sub:x.id};renderViewer();}
+  else{V={files:[{id:'',name:'Комментарий',type:'text/note'}],i:0,note:note,sub:x.id};renderViewer();}
   if(subUnseen(x)){
     var now=Date.now(); x.seenAt=now; render();
     write("submissions/"+x.id,function(){return S.db.doc("submissions/"+x.id).update({seenAt:now});});
   }
 }
 
+function subById(id){for(var i=0;i<S.subs.length;i++)if(S.subs[i].id===id)return S.subs[i];return null;}
+function askSubDel(kind){
+  var box=$("#v-del"); if(!box)return;
+  box.innerHTML='<div class="confirm">'+(kind==="file"?"Удалить это фото из работы ученика?":"Удалить всю работу ученика: все фото и комментарий?")+
+    '<button class="btn" style="background:var(--miss);border-color:var(--miss)" data-action="v-del-yes" data-k="'+kind+'">Удалить</button><button class="link" data-action="v-del-no">Отмена</button></div>';
+}
+function doSubDel(kind){
+  var x=subById(V.sub); if(!x)return;
+  var gone=kind==="file"?[V.files[V.i]]:(x.files||[]).slice();
+  var keep=kind==="file"?(x.files||[]).filter(function(f){return f.id!==gone[0].id;}):[];
+  gone.forEach(function(f){if(f&&f.id&&S.assets)S.assets.delete(f.id).catch(function(){});});
+  if(!keep.length&&(kind==="all"||!x.comment)){
+    S.subs=S.subs.filter(function(y){return y.id!==x.id;});
+    write("submissions/"+x.id,function(){return S.db.doc("submissions/"+x.id).delete();});
+    V=null;
+  }else{
+    x.files=keep;
+    write("submissions/"+x.id,function(){return S.db.doc("submissions/"+x.id).update({files:keep});});
+    if(keep.length){V.files=keep;V.i=Math.min(V.i,keep.length-1);}
+    else V.files=[{id:'',name:'Комментарий',type:'text/note'}];
+  }
+  renderViewer(); render();
+}
 function renderViewer(){
   var box=$("#viewer"); if(!V){box.innerHTML="";return;}
   var f=V.files[V.i], n=V.files.length;
@@ -509,6 +536,8 @@ function renderViewer(){
     (dl?'<button class="btn ghost" data-action="v-save">Скачать</button>':'')+
     '<button class="btn" data-action="v-close">Закрыть</button></span></div>'+
     (V.note?'<p class="v-note">'+esc(V.note)+'</p>':'')+
+    (V.sub?'<div class="v-subbar">'+(f.type!=="text/note"?'<button class="link danger-link" data-action="v-del-file">Удалить это фото</button>':'')+
+      '<button class="link danger-link" data-action="v-del-all">Удалить всю работу</button><div id="v-del"></div></div>':'')+
     '<p class="err" id="v-err"></p><div class="v-body" id="v-body"><p class="muted">Открываю…</p></div></div></div>';
   var body=$("#v-body"), my=V;
   var t=f.type||"";
@@ -1033,6 +1062,10 @@ document.addEventListener("click",function(e){
       break;}
     case "open-file": openFile(d.l,d.i,d.w); break;
     case "sub-open": openSub(d.l,d.s); break;
+    case "v-del-file": askSubDel("file"); break;
+    case "v-del-all": askSubDel("all"); break;
+    case "v-del-no": $("#v-del").innerHTML=""; break;
+    case "v-del-yes": doSubDel(d.k); break;
     case "v-close": V=null; renderViewer(); break;
     case "v-prev": V.i=(V.i-1+V.files.length)%V.files.length; renderViewer(); break;
     case "v-next": V.i=(V.i+1)%V.files.length; renderViewer(); break;

@@ -97,6 +97,8 @@ h2{font-size:16px;margin:0 0 10px}
 .ed-b{border:1px solid #39435a;background:#1a2130;color:#e9edf5;border-radius:8px;padding:8px 12px;font-weight:600;cursor:pointer}
 .ed-b[aria-pressed="true"]{background:#e9edf5;color:#0d1118}
 .ed-b.danger{color:#ff8a6c}
+.ed-str{display:flex;align-items:center;gap:8px;flex-basis:100%;justify-content:center;font-size:14px}
+.ed-str input{width:min(260px,60vw);accent-color:#8ea8ff}
 .ed-nav{display:flex;justify-content:space-between;gap:10px}
 .ed .btn.ghost{background:transparent;color:#e9edf5;border-color:#39435a}
 .err:empty{display:none}
@@ -372,7 +374,7 @@ function openEditor(lid,list){
   if(!imgs.length){sendFiles(lid,extra);return;}
   Promise.all(imgs.map(loadImg)).then(function(loaded){
     var items=[];
-    loaded.forEach(function(img,k){if(img)items.push({file:imgs[k],img:img,rot:0,crop:{x:0,y:0,w:1,h:1},scan:false});else extra.push(imgs[k]);});
+    loaded.forEach(function(img,k){if(img)items.push({file:imgs[k],img:img,rot:0,crop:{x:0,y:0,w:1,h:1},scan:false,str:0.5});else extra.push(imgs[k]);});
     if(!items.length){sendFiles(lid,extra);return;}
     ED={lid:lid,items:items,i:0,extra:extra};
     document.body.style.overflow="hidden";
@@ -394,7 +396,8 @@ function drawRotated(ctx,it,k){
   ctx.restore();
 }
 /* режим «как скан»: убираем тени и серый фон, почерк делаем контрастнее */
-function scanFilter(canvas){
+function scanFilter(canvas,strength){
+  var a=strength==null?0.6:strength;
   var w=canvas.width, h=canvas.height, ctx=canvas.getContext("2d");
   var sw=Math.max(8,Math.round(w/24)), sh=Math.max(8,Math.round(h/24));
   var small=document.createElement("canvas"); small.width=sw; small.height=sh;
@@ -402,11 +405,14 @@ function scanFilter(canvas){
   var bgc=document.createElement("canvas"); bgc.width=w; bgc.height=h;
   var bx=bgc.getContext("2d"); bx.imageSmoothingEnabled=true; bx.imageSmoothingQuality="high"; bx.drawImage(small,0,0,w,h);
   var src=ctx.getImageData(0,0,w,h), bg=bx.getImageData(0,0,w,h).data, d=src.data;
+  // чем сильнее эффект, тем светлее фон и темнее линии; на слабом почти исходное фото, только без тени
+  var lo=0.25*a, hi=1-0.1*a;
   for(var p=0;p<d.length;p+=4){
     var bl=Math.max(40,0.299*bg[p]+0.587*bg[p+1]+0.114*bg[p+2]);
     for(var c=0;c<3;c++){
-      var r=d[p+c]/bl, v=(r-0.55)/(0.92-0.55);
-      d[p+c]=v<=0?0:v>=1?255:Math.round(v*255);
+      var r=d[p+c]/bl, v=(r-lo)/(hi-lo);
+      v=v<=0?0:v>=1?255:v*255;
+      d[p+c]=Math.round(d[p+c]*(1-a)+v*a);
     }
   }
   ctx.putImageData(src,0,0);
@@ -419,7 +425,7 @@ function editorBase(){
   var dw=Math.max(40,Math.floor(rd.w*k)), dh=Math.max(40,Math.floor(rd.h*k));
   var base=document.createElement("canvas"); base.width=Math.round(dw*dpr); base.height=Math.round(dh*dpr);
   drawRotated(base.getContext("2d"),it,base.width/rd.w);
-  if(it.scan)scanFilter(base);
+  if(it.scan)scanFilter(base,it.str);
   ED.base=base; ED.disp={w:dw,h:dh,dpr:dpr};
   var c=$("#ed-c"); c.width=base.width; c.height=base.height; c.style.width=dw+"px"; c.style.height=dh+"px";
   editorPaint();
@@ -476,6 +482,7 @@ function renderEditor(){
       '<button type="button" class="ed-b" data-ed="rl" aria-label="Повернуть влево">↺ Повернуть</button>'+
       '<button type="button" class="ed-b" data-ed="rr" aria-label="Повернуть вправо">↻ Повернуть</button>'+
       '<button type="button" class="ed-b" data-ed="scan" aria-pressed="'+it.scan+'">Как скан</button>'+
+      (it.scan?'<label class="ed-str">Сила <input type="range" id="ed-str" min="10" max="100" step="5" value="'+Math.round(it.str*100)+'" aria-label="Сила эффекта «как скан»"> <span id="ed-str-v">'+Math.round(it.str*100)+'%</span></label>':'')+
       '<button type="button" class="ed-b" data-ed="reset">Сбросить</button>'+
       '<button type="button" class="ed-b danger" data-ed="drop">Убрать фото</button>'+
     '</div>'+
@@ -493,7 +500,7 @@ function exportItem(it){
   drawRotated(fx,it,k);
   var out=document.createElement("canvas"); out.width=Math.max(1,Math.round(cw*k)); out.height=Math.max(1,Math.round(ch*k));
   out.getContext("2d").drawImage(full,Math.round(it.crop.x*full.width),Math.round(it.crop.y*full.height),out.width,out.height,0,0,out.width,out.height);
-  if(it.scan)scanFilter(out);
+  if(it.scan)scanFilter(out,it.str);
   return new Promise(function(res){
     out.toBlob(function(b){res(new File([b],(it.file.name||"фото").replace(/\.[^.]+$/,"")+".jpg",{type:"image/jpeg"}));},"image/jpeg",0.82);
   });
@@ -503,7 +510,7 @@ function edAction(a){
   if(a==="cancel"){closeEditor();return;}
   if(a==="rl"||a==="rr"){it.rot=(it.rot+(a==="rr"?90:270))%360;it.crop={x:0,y:0,w:1,h:1};renderEditor();return;}
   if(a==="scan"){it.scan=!it.scan;renderEditor();return;}
-  if(a==="reset"){it.rot=0;it.scan=false;it.crop={x:0,y:0,w:1,h:1};renderEditor();return;}
+  if(a==="reset"){it.rot=0;it.scan=false;it.str=0.5;it.crop={x:0,y:0,w:1,h:1};renderEditor();return;}
   if(a==="drop"){
     ED.items.splice(ED.i,1);
     if(!ED.items.length){var lid=ED.lid,ex=ED.extra;closeEditor();if(ex.length)sendFiles(lid,ex,true);return;}
@@ -523,6 +530,12 @@ document.addEventListener("pointermove",edMove);
 document.addEventListener("pointerup",edUp);
 document.addEventListener("pointercancel",edUp);
 window.addEventListener("resize",function(){if(ED)editorBase();});
+var STR_T=null;
+document.addEventListener("input",function(e){
+  if(!ED||e.target.id!=="ed-str")return;
+  ED.items[ED.i].str=(+e.target.value)/100; $("#ed-str-v").textContent=e.target.value+"%";
+  clearTimeout(STR_T); STR_T=setTimeout(editorBase,80);
+});
 document.addEventListener("click",function(e){var b=e.target.closest("[data-ed]");if(b&&ED)edAction(b.dataset.ed);});
 
 /* вставка Ctrl+V и перетаскивание с компьютера */
