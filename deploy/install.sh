@@ -77,6 +77,14 @@ DOMAIN=${DOMAIN:-$CUR_DOMAIN}
 DOMAIN=$(echo "$DOMAIN" | sed -e 's#^https\?://##' -e 's#/.*$##' | tr 'A-Z' 'a-z')
 echo -n "$DOMAIN" > /etc/journal-domain
 if [ -n "$DOMAIN" ]; then
+  MYIP=$(curl -fsS -4 https://ifconfig.me 2>/dev/null || true)
+  DIP=$(getent ahostsv4 "$DOMAIN" | awk 'NR==1{print $1}')
+  if [ -n "$MYIP" ] && [ "$DIP" != "$MYIP" ]; then
+    echo "Внимание: домен $DOMAIN сейчас указывает на '${DIP:-никуда}', а адрес этого сервера $MYIP."
+    echo "Сертификат HTTPS получится, только когда домен начнёт указывать на этот сервер. Caddy будет пробовать сам."
+  fi
+fi
+if [ -n "$DOMAIN" ]; then
   SITE_ADDR="$DOMAIN"
 else
   SITE_ADDR=":80"
@@ -90,6 +98,15 @@ $SITE_ADDR {
 	reverse_proxy 127.0.0.1:3000
 }
 EOF
+# если для www.домена тоже есть запись, перенаправляем его на основной адрес
+if [ -n "$DOMAIN" ] && getent ahostsv4 "www.$DOMAIN" >/dev/null 2>&1; then
+  cat >> /etc/caddy/Caddyfile <<EOF
+
+www.$DOMAIN {
+	redir https://$DOMAIN{uri} permanent
+}
+EOF
+fi
 
 say "Настраиваю автозапуск и автообновление"
 install -m 644 "$APP_DIR/deploy/journal.service"        /etc/systemd/system/journal.service
