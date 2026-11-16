@@ -80,16 +80,25 @@ async function notify(msg) {
   const subs = load().subs.slice();
   if (!subs.length) return { sent: 0, total: 0 };
   let sent = 0, dead = [];
+  const report = [];
   await Promise.all(subs.map(async s => {
+    const r = { device: s.device || 'устройство', service: new URL(s.endpoint).host, ok: false, error: '' };
+    report.push(r);
     try {
       const st = await sendOne(s, msg);
-      if (st >= 200 && st < 300) sent++;
-      else if (st === 404 || st === 410) dead.push(s.endpoint);
-      else console.error(new Date().toISOString(), 'push', st, new URL(s.endpoint).host);
-    } catch (e) { console.error(new Date().toISOString(), 'push error', new URL(s.endpoint).host, e.message); }
+      if (st >= 200 && st < 300) { sent++; r.ok = true; }
+      else {
+        r.error = 'сервис уведомлений ответил ' + st;
+        if (st === 404 || st === 410) { dead.push(s.endpoint); r.error += ' (подписка устарела)'; }
+        console.error(new Date().toISOString(), 'push', st, r.service);
+      }
+    } catch (e) {
+      r.error = 'не удалось связаться с ' + r.service + ': ' + (e.cause && e.cause.code || e.name === 'TimeoutError' && 'нет ответа' || e.message);
+      console.error(new Date().toISOString(), 'push error', r.service, e.message, e.cause && e.cause.code || '');
+    }
   }));
   if (dead.length) { state.subs = state.subs.filter(s => !dead.includes(s.endpoint)); save(); }
-  return { sent, total: subs.length };
+  return { sent, total: subs.length, report };
 }
 function notifySoon(msg) { notify(msg).catch(e => console.error('push', e.message)); }
 

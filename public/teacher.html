@@ -1554,7 +1554,7 @@ function openPush(){
 }
 function pushRender(msg){
   var box=$("#pu-body"); if(!box)return;
-  function out(h){box.innerHTML=h+(msg?'<p class="pg-msg" role="status" style="margin-top:10px">'+esc(msg)+'</p>':'');}
+  function out(h){box.innerHTML=h+(msg?'<p class="pg-msg" role="status" style="margin-top:10px;white-space:pre-line">'+esc(msg)+'</p>':'');}
   if(isIOS()&&!isStandalone()){
     return out('<div class="hint-box"><p style="margin:0 0 6px"><b>На iPhone уведомления работают, только если журнал открыт с экрана «Домой»:</b></p><ol style="margin:0;padding-left:20px"><li>Нажмите в Safari кнопку «Поделиться» (квадрат со стрелкой).</li><li>Выберите «На экран „Домой“» → «Добавить».</li><li>Откройте журнал с новой иконки и войдите паролем.</li><li>Снова нажмите «Уведомления» и включите их.</li></ol></div>');
   }
@@ -1579,7 +1579,7 @@ function pushOn(){
     return reg.pushManager.getSubscription().then(function(old){return old||reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uToBytes(key)});});
   }).then(function(sub){return pushApi("/api/push/subscribe",{subscription:sub.toJSON(),device:deviceLabel()});})
     .then(function(){return pushApi("/api/push/test",{});})
-    .then(function(r){pushRender(r.sent?"Готово! Должно прийти пробное уведомление.":"Подписка сохранена, но пробное уведомление не дошло. Напишите Claude.");})
+    .then(function(r){pushRender((r.sent?"Готово! Должно прийти пробное уведомление.\n":"")+pushReport(r));})
     .catch(function(e){pushRender("Не получилось: "+e.message);});
 }
 function pushOff(){
@@ -1588,8 +1588,11 @@ function pushOff(){
     return pushApi("/api/push/unsubscribe",{endpoint:sub.endpoint}).then(function(){return sub.unsubscribe();});
   }).then(function(){pushRender("Выключено на этом устройстве.");},function(e){pushRender("Не получилось: "+e.message);});
 }
+function pushReport(r){
+  return (r.report||[]).map(function(x){return x.device+": "+(x.ok?"отправлено":"не отправлено — "+x.error);}).join("\n");
+}
 function pushTest(){
-  pushApi("/api/push/test",{}).then(function(r){pushRender(r.sent?"Отправлено на устройств: "+r.sent+" из "+r.total+".":"Не дошло ни до одного устройства. Попробуйте выключить и включить снова.");},function(e){pushRender("Не получилось: "+e.message);});
+  pushApi("/api/push/test",{}).then(function(r){pushRender(pushReport(r)||"Нет устройств с уведомлениями.");},function(e){pushRender("Не получилось: "+e.message);});
 }
 
 /* ---------- перенос данных ---------- */
