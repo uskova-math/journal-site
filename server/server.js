@@ -186,6 +186,11 @@ function storeFile(buf, name, mime, id, owner) {
   Q.fileAdd.run(id, String(name || 'файл').slice(0, 200), safeMime(mime), buf.length, Date.now(), owner || 'teacher');
   return { id, url: '/_blob/' + id, contentType: safeMime(mime), sizeBytes: buf.length };
 }
+function dropFile(id) {
+  if (!/^[A-Za-z0-9_-]{6,64}$/.test(String(id || ''))) return;
+  Q.fileDel.run(id);
+  try { fs.unlinkSync(path.join(FILES_DIR, id)); } catch (e) {}
+}
 function serveFile(req, res, id, download) {
   const f = Q.fileGet.get(id);
   if (!f) return send(res, 404, 'Файл не найден', { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -257,10 +262,16 @@ function attemptsPublic(a, v) {
   return { count: a.attempts.length, first: scores[0], best: Math.max.apply(null, scores), total: n,
     last: { at: last.at, answers: last.answers || {}, correct: last.correct || [] }, wrong, revealed: a.revealed || {} };
 }
+// Сборник варианта: явное поле set или год из source («… ЕГЭпроф 2025» → «ЕГЭ 2025»)
+function variantSet(v) {
+  if (v.set) return String(v.set);
+  const m = /(20\d\d)/.exec(String(v.source || ''));
+  return m ? 'ЕГЭ ' + m[1] : '';
+}
 function publicVariant(id, v, sid) {
   const strip = t => ({ n: String(t.n), files: t.files || [] });
   return {
-    id, title: v.title || 'Вариант', order: v.order || 0,
+    id, title: v.title || 'Вариант', set: variantSet(v), order: v.order || 0,
     part1: (v.part1 || []).map(strip), part2: (v.part2 || []).map(strip),
     result: attemptsPublic(getDoc('attempts', (id + '_' + sid).slice(0, 64)), v),
     sub: publicSub(getDoc('submissions', subId('var-' + id, sid))),
@@ -410,7 +421,7 @@ function studentPayload(tok) {
     variants: allDocs('variants')
       .filter(v => (v.data.groups || []).some(id => gids.has(id)))
       .map(v => publicVariant(v.id, v.data, sid))
-      .sort((a, b) => a.title.localeCompare(b.title, 'ru', { numeric: true }) || a.order - b.order),
+      .sort((a, b) => b.set.localeCompare(a.set, 'ru', { numeric: true }) || a.title.localeCompare(b.title, 'ru', { numeric: true }) || a.order - b.order),
     catalogs: allDocs('catalogs')
       .filter(c => (c.data.groups || []).some(id => gids.has(id)))
       .sort((a, b) => (a.data.order || 0) - (b.data.order || 0))
@@ -498,9 +509,25 @@ function importVariants(buf) {
         return { id: f.id, url: f.url, type: mime, name: img };
       }),
     });
+    const title = String(spec.title || ('Вариант ' + (existing + k + 1)));
+    const set = variantSet({ set: spec.set, source: spec.source });
+    const part1 = (spec.part1 || []).map(conv), part2 = (spec.part2 || []).map(conv);
+    // Тот же вариант уже загружен (то же название и сборник) — обновляем картинки, сохраняя
+    // группы, исправленные учителем ответы и результаты учеников.
+    const old = allDocs('variants').find(d => d.data.title === title && variantSet(d.data) === set);
+    if (old) {
+      const prev = {};
+      (old.data.part1 || []).forEach(t => { if (t.answer) prev[t.n] = t.answer; });
+      (old.data.part1 || []).concat(old.data.part2 || []).forEach(t => (t.files || []).forEach(f => dropFile(f.id)));
+      part1.forEach(t => { if (prev[t.n]) t.answer = prev[t.n]; });
+      const doc = Object.assign({}, old.data, { set, source: String(spec.source || old.data.source || ''), part1, part2, updated: Date.now() });
+      putDoc('variants', old.id, doc);
+      out.push({ id: old.id, title, part1: part1.length, part2: part2.length, updated: true });
+      return;
+    }
     const id = crypto.randomBytes(10).toString('hex');
-    const doc = { title: String(spec.title || ('Вариант ' + (existing + k + 1))), order: existing + k, groups: [],
-      source: String(spec.source || ''), part1: (spec.part1 || []).map(conv), part2: (spec.part2 || []).map(conv), created: Date.now() };
+    const doc = { title, set, order: existing + k, groups: [],
+      source: String(spec.source || ''), part1, part2, created: Date.now() };
     putDoc('variants', id, doc);
     out.push({ id, title: doc.title, part1: doc.part1.length, part2: doc.part2.length });
   });

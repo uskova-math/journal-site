@@ -83,6 +83,7 @@ h2{font-size:16px;margin:0 0 10px}
 .hwsub.drop{background:var(--ink-soft)}
 /* варианты */
 .v-list{display:flex;flex-direction:column;gap:8px}
+.v-set{margin:18px 0 8px;font-size:17px}.v-set:first-child{margin-top:0}
 .v-card{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;text-decoration:none;color:var(--text)}
 .v-card:hover{border-color:var(--ink)}
 .v-title{font-weight:600}
@@ -466,9 +467,12 @@ function varStatus(v){
 function renderVariants(){
   var vs=D.variants||[];
   if(!vs.length)return '<div class="panel empty">Вариантов пока нет.</div>';
-  return '<div class="v-list">'+vs.map(function(v){
-    return '<a class="v-card" href="#v-'+esc(v.id)+'"><span class="v-title">'+esc(v.title)+'</span><span class="v-st">'+varStatus(v)+'</span></a>';
-  }).join("")+'</div>';
+  var sets=[];vs.forEach(function(v){if(sets.indexOf(v.set||"")<0)sets.push(v.set||"");});
+  return sets.map(function(st){
+    return (sets.length>1?'<h2 class="v-set">'+esc(st||"Другие варианты")+'</h2>':'')+'<div class="v-list">'+vs.filter(function(v){return (v.set||"")===st;}).map(function(v){
+      return '<a class="v-card" href="#v-'+esc(v.id)+'"><span class="v-title">'+esc(v.title)+'</span><span class="v-st">'+varStatus(v)+'</span></a>';
+    }).join("")+'</div>';
+  }).join("");
 }
 function renderVariant(){
   var v=VAR&&findV(VAR);
@@ -476,7 +480,7 @@ function renderVariant(){
   var r=v.result, draft=lsGet(draftKey(v.id))||{}, last=r?r.last:null, ok={};
   if(last)last.correct.forEach(function(n){ok[n]=1;});
   var pend=(lsGet(PEND_KEY())||[]).some(function(x){return x.vid===v.id;});
-  var h='<a class="back" href="#variants">← Все варианты</a><header class="task-h"><div><h2 style="margin:0">'+esc(v.title)+'</h2>'+
+  var h='<a class="back" href="#variants">← Все варианты</a><header class="task-h"><div><h2 style="margin:0">'+esc(v.title)+(v.set?' <span style="font-weight:500;color:var(--muted)">· '+esc(v.set)+'</span>':'')+'</h2>'+
     '<div class="v-st" style="margin-top:6px">'+varStatus(v)+(r&&r.count>1?'<span class="v-att">с первой попытки '+r.first+' из '+r.total+'</span>':'')+'</div></div></header>';
   h+='<section class="panel"><h2>Часть 1 — краткий ответ</h2><p class="hint" style="margin-bottom:10px">Ответы сохраняются на этом устройстве сразу, как вы их вписываете. Когда решите, нажмите «Проверить» внизу. Неверные можно исправить и проверить снова, попыток сколько угодно.</p><div class="v-tasks">';
   v.part1.forEach(function(t){
