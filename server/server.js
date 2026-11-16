@@ -16,6 +16,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const { DatabaseSync } = require('node:sqlite');
+const push = require('./push');
 
 const ROOT = path.resolve(__dirname, '..');
 const PUBLIC = path.join(ROOT, 'public');
@@ -58,6 +59,7 @@ if (process.argv[2] === 'set-password') {
 
 /* ---------- база ---------- */
 const db = new DatabaseSync(path.join(DATA_DIR, 'journal.db'));
+push.init(DATA_DIR);
 db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA busy_timeout = 5000;
@@ -293,6 +295,21 @@ function studentCtx(tok) {
   if (!groups.length) return null;
   return { sid, gids: new Set(groups.map(g => g.id)) };
 }
+/* ---------- уведомления учителю ---------- */
+const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+function whoIs(sid, gid) {
+  const groups = allDocs('groups');
+  const g = groups.find(x => x.id === gid) || groups.find(x => (x.data.students || []).some(s => s.id === sid));
+  const st = g && (g.data.students || []).find(s => s.id === sid);
+  return (st ? st.name : 'Ученик') + (g && g.data.name ? ' (' + g.data.name + ')' : '');
+}
+function varLabel(v) { return (v.title || 'Вариант') + (variantSet(v) ? ' · ' + variantSet(v) : ''); }
+function dateLabel(d) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || ''));
+  return m ? (+m[3]) + ' ' + MONTHS[+m[2] - 1] : '';
+}
+function photos(n) { return n + ' ' + (n % 10 === 1 && n % 100 !== 11 ? 'файл' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'файла' : 'файлов'); }
+
 const STUDENT_TYPES = /^(image\/(jpeg|png|webp|gif|heic|heif)|application\/pdf)$/;
 async function studentApi(req, res, tok, action) {
   const ctx = studentCtx(tok);
@@ -327,11 +344,21 @@ async function studentApi(req, res, tok, action) {
         if (sameAnswer(val, t.answer)) correct.push(n);
       });
       if (!Object.keys(answers).length) return json(res, 400, { error: 'Впишите хотя бы один ответ.' });
+      const before = doc.attempts.length ? attemptsPublic(doc, v) : null;
       att = { at: Date.now(), answers, correct, clientId };
       doc.attempts.push(att);
       if (doc.attempts.length > 200) doc.attempts = doc.attempts.slice(-200);
       doc.updated = att.at;
       putDoc('attempts', aid, doc);
+      const now = attemptsPublic(doc, v);
+      if (!before || now.best > before.best) {
+        const gid = (v.groups || []).find(id => ctx.gids.has(id));
+        push.notifySoon({
+          title: 'Вариант: ' + whoIs(sid, gid),
+          body: varLabel(v) + ' — ' + (before ? 'лучший результат ' + now.best + ' из ' + now.total + ', попыток: ' + now.count : 'верно ' + now.best + ' из ' + now.total + ' с первой попытки'),
+          url: '/t/', tag: 'att-' + aid,
+        });
+      }
     }
     return json(res, 200, { correct: att.correct, answered: Object.keys(att.answers), result: attemptsPublic(doc, v) });
   }
@@ -370,6 +397,18 @@ async function studentApi(req, res, tok, action) {
     if (typeof body.comment === 'string') cur.comment = body.comment.slice(0, 2000);
     cur.updated = Date.now();
     putDoc('submissions', id, cur);
+    if (add.length) {
+      const v = lesson.variant && getDoc('variants', lessonId.slice(4));
+      push.notifySoon(v ? {
+        title: 'Вторая часть: ' + whoIs(sid, lesson.groupId),
+        body: varLabel(v) + ' · ' + photos(cur.files.length),
+        url: '/t/', tag: 'sub-' + id,
+      } : {
+        title: 'Домашка: ' + whoIs(sid, lesson.groupId),
+        body: 'К уроку ' + dateLabel(lesson.date) + (lesson.topic ? ' («' + String(lesson.topic).slice(0, 60) + '»)' : '') + ' · ' + photos(cur.files.length),
+        url: '/t/', tag: 'sub-' + id,
+      });
+    }
     return json(res, 200, { sub: publicSub(cur) });
   }
   if (action === 'remove') {
@@ -548,6 +587,8 @@ async function handle(req, res) {
     if (!f.startsWith(path.join(PUBLIC, 'static'))) return send(res, 404, '');
     return sendStatic(res, f);
   }
+  if (p === '/sw.js' && m === 'GET') return sendStatic(res, path.join(PUBLIC, 'sw.js'), { 'Service-Worker-Allowed': '/', 'Cache-Control': 'no-cache' });
+  if (p === '/manifest.webmanifest' && m === 'GET') return sendStatic(res, path.join(PUBLIC, 'manifest.webmanifest'));
   if (p === '/' && m === 'GET') return redirect(res, isTeacher(req) ? '/t/' : '/login');
   if (p === '/login' && m === 'GET') return isTeacher(req) ? redirect(res, '/t/') : page(res, 'login.html');
   if (p === '/login' && m === 'POST') {
@@ -628,6 +669,24 @@ async function handle(req, res) {
     }
     if ((mm = /^\/api\/links\/([A-Za-z0-9_-]{1,64})$/.exec(p)) && m === 'POST') {
       return json(res, 200, { token: ensureLink(mm[1], url.searchParams.has('new')) });
+    }
+    if (p === '/api/push' && m === 'GET') {
+      return json(res, 200, { key: push.publicKey(), devices: push.count(), on: push.has(url.searchParams.get('endpoint')) });
+    }
+    if (p === '/api/push/subscribe' && m === 'POST') {
+      const body = await readJson(req);
+      const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost').split(',')[0].trim();
+      const n = push.subscribe(body.subscription, /^(localhost|127\.|\[::1\])/.test(host) ? 'mailto:noreply@example.com' : 'https://' + host, body.device);
+      return json(res, 200, { devices: n });
+    }
+    if (p === '/api/push/unsubscribe' && m === 'POST') {
+      const body = await readJson(req);
+      push.unsubscribe(String(body.endpoint || ''));
+      return json(res, 200, { devices: push.count() });
+    }
+    if (p === '/api/push/test' && m === 'POST') {
+      const r = await push.notify({ title: 'Журнал', body: 'Уведомления работают. Сюда будут приходить новые работы и результаты вариантов.', url: '/t/', tag: 'test' });
+      return json(res, 200, r);
     }
     if (p === '/api/variants/import' && m === 'POST') {
       const buf = await readBody(req, 300 * 1024 * 1024);

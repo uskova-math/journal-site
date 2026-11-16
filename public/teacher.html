@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Журнал групп</title>
 <link rel="icon" href="/static/icon.svg">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Журнал">
+<meta name="theme-color" content="#2446b8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Unbounded:wght@500;600&display=swap" rel="stylesheet">
@@ -462,7 +467,7 @@ function render(){
   if((S.mode==="catalog"||S.mode==="variants")&&ae&&ae.tagName==="INPUT"&&ae.type==="text"&&ae.closest&&ae.closest("#app"))return;
   var h='<header class="top"><div><h1>Журнал групп</h1><p class="sub">Посещаемость и домашние задания</p></div>';
   if(S.db&&S.canWrite&&S.loaded.g)h+='<div class="top-btns">'+(window.SITE?'<button class="btn ghost" data-action="vt-open">Варианты</button><button class="btn ghost" data-action="cat-open">Банк заданий</button>':'')+(S.groups.length?'<button class="btn ghost" data-action="links">Ссылки учеников</button>':'')+'<button class="btn ghost" data-action="groups">Группы и ученики</button></div>';
-  h+='<div class="site-links"><button class="link" data-action="import">Перенос данных</button><button class="link" data-action="logout">Выйти</button></div>';
+  h+='<div class="site-links"><button class="link" data-action="push-open">Уведомления</button><button class="link" data-action="import">Перенос данных</button><button class="link" data-action="logout">Выйти</button></div>';
   if(!window.SITE&&S.db&&S.loaded.l&&dl)h+='<div class="site-links"><button class="link" data-action="export">Экспорт для переезда</button></div>';
   h+='</header>';
   if(S.notice)h+='<div class="notice" role="status"><span>'+esc(S.notice)+'</span><button class="link" data-action="dismiss">Закрыть</button></div>';
@@ -1271,6 +1276,10 @@ document.addEventListener("click",function(e){
     case "lk-new-yes": makeLink(d.s,true); break;
     case "lk-copy": copyLink(d.s,b); break;
     case "import": openImport(); break;
+    case "push-open": openPush(); break;
+    case "push-on": pushOn(); break;
+    case "push-off": pushOff(); break;
+    case "push-test": pushTest(); break;
     case "im-go": doImport(); break;
     case "logout": fetch("/logout",{method:"POST",credentials:"same-origin"}).finally(function(){location.href="/login";}); break;
     case "export": openExport(); break;
@@ -1515,6 +1524,72 @@ function copyLink(sid,btn){
   function done(){btn.textContent="Скопировано";setTimeout(function(){btn.textContent="Скопировать";},1500);}
   function fallback(){inp.focus();inp.select();try{document.execCommand("copy");done();}catch(e){}}
   if(navigator.clipboard&&window.isSecureContext)navigator.clipboard.writeText(url).then(done,fallback); else fallback();
+}
+
+/* ---------- уведомления на телефон ---------- */
+var PUSH={reg:null};
+function pushSupported(){return "serviceWorker" in navigator&&"PushManager" in window&&"Notification" in window;}
+function isIOS(){return /iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);}
+function isStandalone(){return !!(navigator.standalone||(window.matchMedia&&matchMedia("(display-mode: standalone)").matches));}
+function deviceLabel(){var u=navigator.userAgent;var d=/iPhone/.test(u)?"iPhone":/iPad/.test(u)||isIOS()?"iPad":/Android/.test(u)?"Android":/Mac/.test(u)?"Mac":/Windows/.test(u)?"Windows":"Устройство";
+  var b=/YaBrowser/.test(u)?"Яндекс Браузер":/Edg\//.test(u)?"Edge":/Firefox/.test(u)?"Firefox":/Chrome|CriOS/.test(u)?"Chrome":/Safari/.test(u)?"Safari":"";return d+(b?" · "+b:"");}
+function swReg(){
+  if(PUSH.reg)return Promise.resolve(PUSH.reg);
+  return navigator.serviceWorker.register("/sw.js",{scope:"/"}).then(function(){return navigator.serviceWorker.ready;}).then(function(r){PUSH.reg=r;return r;});
+}
+if(pushSupported()){
+  swReg().catch(function(){});
+  navigator.serviceWorker.addEventListener("message",function(e){if(e.data&&e.data.type==="refresh"&&window.SITE&&window.SITE.refresh)window.SITE.refresh();});
+}
+function b64uToBytes(s){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
+function pushApi(path,body){return fetch(path,{method:body?"POST":"GET",credentials:"same-origin",headers:body?{"X-Journal":"1","Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined})
+  .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||("Ошибка "+r.status));return j;});});}
+function openPush(){
+  M={kind:"push"};
+  $("#modal").innerHTML='<div class="overlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="pu-title"><div class="m-top"><h2 id="pu-title">Уведомления</h2>'+
+    '<button type="button" class="close-x" data-action="m-close" aria-label="Закрыть" title="Закрыть">×</button></div>'+
+    '<p>Журнал напишет на это устройство, когда ученик пришлёт домашку или вторую часть варианта, а также когда решит вариант: результат первой попытки и каждое улучшение.</p>'+
+    '<div id="pu-body"><p class="hint">Проверяю…</p></div></div></div>';
+  pushRender();
+}
+function pushRender(msg){
+  var box=$("#pu-body"); if(!box)return;
+  function out(h){box.innerHTML=h+(msg?'<p class="pg-msg" role="status" style="margin-top:10px">'+esc(msg)+'</p>':'');}
+  if(isIOS()&&!isStandalone()){
+    return out('<div class="hint-box"><p style="margin:0 0 6px"><b>На iPhone уведомления работают, только если журнал открыт с экрана «Домой»:</b></p><ol style="margin:0;padding-left:20px"><li>Нажмите в Safari кнопку «Поделиться» (квадрат со стрелкой).</li><li>Выберите «На экран „Домой“» → «Добавить».</li><li>Откройте журнал с новой иконки и войдите паролем.</li><li>Снова нажмите «Уведомления» и включите их.</li></ol></div>');
+  }
+  if(!pushSupported())return out('<p class="hint">Этот браузер не умеет показывать уведомления от сайтов. Попробуйте Chrome, Safari, Edge или Яндекс Браузер.</p>');
+  if(Notification.permission==="denied")return out('<p class="hint">Уведомления для этого сайта запрещены в настройках. '+(isIOS()?'Откройте «Настройки» iPhone → «Уведомления» → «Журнал» и включите «Допуск уведомлений».':'Разрешите их в настройках сайта (значок замка слева от адреса) и обновите страницу.')+'</p>');
+  swReg().then(function(reg){return reg.pushManager.getSubscription();}).then(function(sub){
+    return pushApi("/api/push"+(sub?"?endpoint="+encodeURIComponent(sub.endpoint):"")).then(function(j){
+      var on=!!(sub&&j.on);
+      out('<p><b>'+(on?'На этом устройстве уведомления включены.':'На этом устройстве уведомления выключены.')+'</b>'+(j.devices?'<br><span class="hint">Всего устройств с уведомлениями: '+j.devices+'.</span>':'')+'</p>'+
+        '<div class="m-actions">'+(on?'<button class="btn ghost" data-action="push-off">Выключить здесь</button><span class="spacer"></span><button class="btn" data-action="push-test">Прислать пробное</button>'
+          :'<span class="spacer"></span><button class="btn" data-action="push-on">Включить уведомления</button>')+'</div>');
+    });
+  }).catch(function(e){out('<p class="hint">Не получилось проверить: '+esc(e.message)+'</p>');});
+}
+function pushOn(){
+  var key;
+  pushRender("Включаю…");
+  Notification.requestPermission().then(function(p){
+    if(p!=="granted")throw new Error(p==="denied"?"вы запретили уведомления. Их можно разрешить в настройках.":"разрешение не получено.");
+    return pushApi("/api/push");
+  }).then(function(j){key=j.key;return swReg();}).then(function(reg){
+    return reg.pushManager.getSubscription().then(function(old){return old||reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uToBytes(key)});});
+  }).then(function(sub){return pushApi("/api/push/subscribe",{subscription:sub.toJSON(),device:deviceLabel()});})
+    .then(function(){return pushApi("/api/push/test",{});})
+    .then(function(r){pushRender(r.sent?"Готово! Должно прийти пробное уведомление.":"Подписка сохранена, но пробное уведомление не дошло. Напишите Claude.");})
+    .catch(function(e){pushRender("Не получилось: "+e.message);});
+}
+function pushOff(){
+  swReg().then(function(reg){return reg.pushManager.getSubscription();}).then(function(sub){
+    if(!sub)return;
+    return pushApi("/api/push/unsubscribe",{endpoint:sub.endpoint}).then(function(){return sub.unsubscribe();});
+  }).then(function(){pushRender("Выключено на этом устройстве.");},function(e){pushRender("Не получилось: "+e.message);});
+}
+function pushTest(){
+  pushApi("/api/push/test",{}).then(function(r){pushRender(r.sent?"Отправлено на устройств: "+r.sent+" из "+r.total+".":"Не дошло ни до одного устройства. Попробуйте выключить и включить снова.");},function(e){pushRender("Не получилось: "+e.message);});
 }
 
 /* ---------- перенос данных ---------- */
