@@ -324,6 +324,33 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .v-subbar #v-del:empty{display:none}
 .danger-link{color:var(--miss)}
 .v-note{margin:0;padding:10px 14px;background:var(--ink-soft);white-space:pre-wrap;font-size:14px;overflow-wrap:anywhere}
+/* план */
+.plan-gen{display:flex;flex-direction:column;gap:10px}
+.pg-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pg-days{display:flex;gap:4px;flex-wrap:wrap}
+.pg-day{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:5px 10px;cursor:pointer;font-weight:600;color:var(--muted)}
+.pg-day[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
+.pg-row input[type=date],.plan-t input{border:1px solid var(--line);background:var(--paper);border-radius:7px;padding:6px 8px}
+.pg-msg{margin:0;color:var(--ok);font-weight:600;font-size:14px}
+.plan-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.plan-t{width:100%;border-collapse:collapse}
+.plan-t th{text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:6px 4px;position:static}
+.plan-t td{padding:3px 4px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+.plan-t td:nth-child(2){width:100%}
+.plan-t .pt{width:100%;min-width:180px}
+.plan-t .pwd{display:inline-block;width:24px;margin-left:6px;font-size:13px;color:var(--muted)}
+.plan-t tr.pm td{background:transparent;font-family:var(--font-display);font-size:14px;padding:14px 4px 4px;border-bottom:2px solid var(--line);position:static}
+.plan-t tr.fut input{color:var(--muted)}
+.plan-t tr.new td{background:var(--ok-soft)}
+.plan-t tr.ed td{background:var(--part-soft)}
+.plan-t tr.del td{background:var(--miss-soft)}
+.plan-t tr.del input{text-decoration:line-through}
+.plan-t th:first-child,.plan-t td:first-child{position:static;background:inherit}
+.plan-bar{position:sticky;bottom:12px;z-index:4;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;background:var(--surface);border:2px solid var(--ink);border-radius:12px;padding:10px 14px;box-shadow:0 8px 24px rgba(10,14,22,.18)}
+.pb-warn{color:var(--miss);font-size:14px;flex-basis:100%}
+.pb-btns{display:flex;gap:8px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (max-width:600px){.plan-t .pwd{display:none}.plan-t .pt{min-width:140px}}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
@@ -383,6 +410,8 @@ function onWriteError(e){
 
 /* ---------- отрисовка ---------- */
 function render(){
+  var ae=document.activeElement;
+  if(S.view==="plan"&&ae&&ae.tagName==="INPUT"&&ae.closest&&ae.closest("#plan"))return;
   var h='<header class="top"><div><h1>Журнал групп</h1><p class="sub">Посещаемость и домашние задания</p></div>';
   if(S.db&&S.canWrite&&S.loaded.g)h+='<div class="top-btns">'+(S.groups.length?'<button class="btn ghost" data-action="links">Ссылки учеников</button>':'')+'<button class="btn ghost" data-action="groups">Группы и ученики</button></div>';
   h+='<div class="site-links"><button class="link" data-action="import">Перенос данных</button><button class="link" data-action="logout">Выйти</button></div>';
@@ -398,31 +427,147 @@ function render(){
     h+='<div class="panel empty">Групп пока нет.'+(S.canWrite?'<br><button class="btn" data-action="groups">Добавить группы и учеников</button>':'')+'</div>';
     $("#app").innerHTML=h;return;
   }
-  var g=curGroup(), ls=groupLessons(g.id);
+  var g=curGroup(), lsAll=groupLessons(g.id), td=today();
+  var fut=lsAll.filter(function(l){return l.date>td;}), nextL=fut.length?fut[fut.length-1]:null; // ближайшее будущее занятие
+  var lsPast=lsAll.filter(function(l){return l.date<=td;}), ls=(nextL?[nextL]:[]).concat(lsPast);
+  var nFuture=lsAll.length-ls.length;
   h+='<nav class="tabs" aria-label="Группы">'+S.groups.map(function(x){
     return '<button class="tab" data-action="tab" data-g="'+esc(x.id)+'" aria-pressed="'+(x.id===g.id)+'">'+esc(x.name||"Без названия")+'<span class="n">· '+(x.students||[]).length+' уч.</span></button>';
   }).join("")+'</nav>';
   if((g.students||[]).some(function(s){return /^Ученик \d+$/.test(s.name);})&&S.canWrite)
     h+='<div class="hint-box">Впишите настоящие имена: кнопка «Группы и ученики» справа вверху.</div>';
   h+=renderNewWorks(g);
-  h+=renderDebts(g,ls);
+  h+=renderDebts(g,lsPast);
   h+='<div class="toolbar"><div class="seg" role="group" aria-label="Вид">'+
      '<button data-action="view" data-v="list" aria-pressed="'+(S.view==="list")+'">Занятия</button>'+
      '<button data-action="view" data-v="table" aria-pressed="'+(S.view==="table")+'">Таблица</button>'+
-     '<button data-action="view" data-v="stats" aria-pressed="'+(S.view==="stats")+'">Статистика</button></div>'+
+     '<button data-action="view" data-v="stats" aria-pressed="'+(S.view==="stats")+'">Статистика</button>'+
+     '<button data-action="view" data-v="plan" aria-pressed="'+(S.view==="plan")+'">План</button></div>'+
      (S.canWrite?'<button class="btn" data-action="new">+ Новое занятие</button>':'')+'</div>';
-  if(!ls.length){
-    h+='<div class="panel empty">В этой группе пока нет занятий. Добавьте первое: дата, тема, что задано и файл с заданием.</div>';
+  if(S.view==="plan"){
+    h+=renderPlan(g,lsAll);
+  } else if(!ls.length){
+    h+='<div class="panel empty">В этой группе пока нет занятий. Добавьте первое: дата, тема, что задано и файл с заданием. Или составьте план во вкладке «План».</div>';
   } else if(S.view==="list"){
     h+=ls.map(function(l){return renderLesson(l,g);}).join("");
+    if(nFuture)h+='<p class="hint">Ещё '+nFuture+' '+plural(nFuture,"запланированное занятие","запланированных занятия","запланированных занятий")+' — во вкладке «План».</p>';
   } else {
-    h+=S.view==="stats"?renderStats(g,ls):renderTable(g,ls);
+    h+=S.view==="stats"?renderStats(g,lsPast):renderTable(g,lsPast);
   }
   $("#app").innerHTML=h;
 }
 
 function hwState(l,sid){var v=mk(l,sid).hw;return v==="done"||v==="part"||v==="none"?v:"wait";}
 var HW_WORD={none:"не сдал(а)",part:"частично",wait:"ждём"};
+
+function addDays(iso,n){var d=parseD(iso);d.setDate(d.getDate()+n);return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());}
+var PL=null; // {gid, edits:{id:{date,topic}}, adds:[{id,date,topic}], dels:{id:1}, days:[bool x7], from, to, msg, confirm}
+var WD=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+var MONTHS_NOM=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+function wdOf(iso){return (parseD(iso).getDay()+6)%7;}
+function planFor(g,lsAll){
+  if(!PL||PL.gid!==g.id){
+    var cnt=[0,0,0,0,0,0,0], from=addDays(today(),-60);
+    lsAll.forEach(function(l){if(l.date>=from)cnt[wdOf(l.date)]++;});
+    PL={gid:g.id,edits:{},adds:[],dels:{},days:cnt.map(function(c){return c>=2;}),from:"",to:"",msg:"",confirm:false,seq:0};
+  }
+  return PL;
+}
+function planDirty(){return PL?Object.keys(PL.edits).length+PL.adds.length+Object.keys(PL.dels).length:0;}
+function planRows(lsAll){
+  var rows=lsAll.map(function(l){var e=PL.edits[l.id]||{};return {id:l.id,date:e.date!=null?e.date:l.date,topic:e.topic!=null?e.topic:(l.topic||""),l:l,edited:!!PL.edits[l.id],del:!!PL.dels[l.id]};})
+    .concat(PL.adds.map(function(a){return {id:a.id,date:a.date,topic:a.topic,isNew:true};}));
+  return rows.sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:0;});
+}
+function genDates(lsAll){
+  var out=[], have={};
+  lsAll.forEach(function(l){have[(PL.edits[l.id]&&PL.edits[l.id].date)||l.date]=1;});
+  PL.adds.forEach(function(a){have[a.date]=1;});
+  if(!PL.from||!PL.to||PL.from>PL.to)return out;
+  for(var d=PL.from,guard=0;d<=PL.to&&guard<800;d=addDays(d,1),guard++){
+    if(PL.days[wdOf(d)]&&!have[d])out.push(d);
+  }
+  return out;
+}
+function hasData(l){
+  if(!l)return false;
+  var m=l.marks||{};
+  return Object.keys(m).some(function(k){var x=m[k]||{};return x.att||x.hw||typeof x.ok==="number";})||(l.files||[]).length||(l.board||[]).length||!!l.hw||!!l.video;
+}
+function renderPlan(g,lsAll){
+  planFor(g,lsAll);
+  var gen=genDates(lsAll), td=today();
+  var h='<section class="panel plan-gen"><h2>Добавить занятия по расписанию</h2>'+
+    '<div class="pg-row"><span class="flabel">Дни недели</span><div class="pg-days" role="group" aria-label="Дни недели">'+WD.map(function(d,i){
+      return '<button type="button" class="pg-day" data-action="pg-day" data-i="'+i+'" aria-pressed="'+!!PL.days[i]+'">'+d+'</button>';}).join("")+'</div></div>'+
+    '<div class="pg-row"><label class="flabel" for="pg-from">С</label><input type="date" id="pg-from" value="'+esc(PL.from)+'">'+
+      '<label class="flabel" for="pg-to">по</label><input type="date" id="pg-to" value="'+esc(PL.to)+'">'+
+      '<button type="button" class="btn" data-action="pg-go"'+(gen.length?'':' disabled')+'>'+(gen.length?'Добавить в план '+gen.length+' '+plural(gen.length,"занятие","занятия","занятий"):'Добавить в план')+'</button></div>'+
+    '<p class="hint">Даты, на которые занятие уже есть, пропускаются. Праздники и отмены потом просто уберите из списка.</p>'+
+    (PL.msg?'<p class="pg-msg" role="status">'+esc(PL.msg)+'</p>':'')+'</section>';
+  var rows=planRows(lsAll), lastM="";
+  h+='<section class="panel"><div class="plan-head"><h2>Все занятия группы</h2><span class="muted">'+rows.length+' '+plural(rows.length,"занятие","занятия","занятий")+'</span></div>'+
+    '<p class="hint" style="margin-bottom:8px">Пишите в теме номер задания ЕГЭ и тему, например «№16 метод интервалов»: так ученики найдут урок через поиск.</p>'+
+    '<div id="plan"><table class="plan-t"><thead><tr><th scope="col">Дата</th><th scope="col">Тема занятия</th><th scope="col"><span class="sr">Действия</span></th></tr></thead><tbody>';
+  rows.forEach(function(r){
+    var mk2=String(r.date).slice(0,7);
+    if(mk2!==lastM){lastM=mk2;var dd=parseD(r.date);h+='<tr class="pm"><td colspan="3">'+MONTHS_NOM[dd.getMonth()]+' '+dd.getFullYear()+'</td></tr>';}
+    var cls=(r.isNew?" new":"")+(r.edited?" ed":"")+(r.del?" del":"")+(r.date>td?" fut":"");
+    h+='<tr class="pr'+cls+'"><td><input type="date" class="pd" data-id="'+esc(r.id)+'" value="'+esc(r.date)+'" aria-label="Дата"'+(r.del?' disabled':'')+'><span class="pwd">'+WD[wdOf(r.date)]+'</span></td>'+
+      '<td><input type="text" class="pt" data-id="'+esc(r.id)+'" value="'+esc(r.topic)+'" placeholder="№ задания и тема" aria-label="Тема занятия '+esc(fmtShort(r.date))+'"'+(r.del?' disabled':'')+'></td>'+
+      '<td>'+(r.del?'<button type="button" class="x" data-action="pl-undel" data-id="'+esc(r.id)+'">Вернуть</button>':'<button type="button" class="x" data-action="pl-del" data-id="'+esc(r.id)+'" title="Убрать занятие">Убрать</button>')+'</td></tr>';
+  });
+  h+='</tbody></table></div><div style="margin-top:10px"><button type="button" class="btn ghost" data-action="pl-add">+ Добавить занятие</button></div></section>';
+  h+=planBar(lsAll);
+  return h;
+}
+function planBar(){
+  var n=planDirty(); if(!n)return '<div id="plan-bar"></div>';
+  var risky=Object.keys(PL.dels).filter(function(id){return hasData(findLesson(id));}).length;
+  return '<div id="plan-bar" class="plan-bar" role="region" aria-label="Несохранённые изменения"><span>Несохранённых изменений: <b>'+n+'</b></span>'+
+    (PL.confirm&&risky?'<span class="pb-warn">Среди удаляемых '+risky+' '+plural(risky,"занятие","занятия","занятий")+' с отметками, домашкой или файлами. Удалить их насовсем?</span>':'')+
+    '<span class="pb-btns"><button type="button" class="btn ghost" data-action="pl-cancel">Отменить</button>'+
+    '<button type="button" class="btn" data-action="'+(risky&&!PL.confirm?'pl-ask':'pl-save')+'">'+(PL.confirm&&risky?'Да, сохранить и удалить':'Сохранить')+'</button></span></div>';
+}
+function refreshPlanBar(){var b=$("#plan-bar");if(b)b.outerHTML=planBar();}
+function planInput(t){
+  var id=t.dataset.id, isNew=/^new-/.test(id), field=t.classList.contains("pd")?"date":"topic", v=t.value;
+  if(field==="date"&&!v)return;
+  if(isNew){PL.adds.forEach(function(a){if(a.id===id)a[field]=v;});}
+  else{
+    var l=findLesson(id); if(!l)return;
+    var e=PL.edits[id]||{}; e[field]=v;
+    if((e.date==null||e.date===l.date)&&(e.topic==null||e.topic===(l.topic||"")))delete PL.edits[id]; else PL.edits[id]=e;
+  }
+  if(field==="date"){var wd=t.parentNode.querySelector(".pwd");if(wd)wd.textContent=WD[wdOf(v)];}
+  t.closest("tr").classList.toggle("ed",!isNew&&!!PL.edits[id]);
+  PL.confirm=false; refreshPlanBar();
+}
+function planSave(){
+  var td=today(), g=curGroup();
+  Object.keys(PL.edits).forEach(function(id){
+    var l=findLesson(id), e=PL.edits[id]; if(!l||PL.dels[id])return;
+    var patch={}; if(e.date!=null)patch.date=e.date; if(e.topic!=null)patch.topic=e.topic.trim();
+    S.lessons[S.lessons.indexOf(l)]=Object.assign({},l,patch);
+    write("lessons/"+id,function(){return S.db.doc("lessons/"+id).update(patch);});
+  });
+  PL.adds.forEach(function(a,k){
+    var ref=S.db.collection("lessons").doc();
+    var data={groupId:g.id,date:a.date,topic:(a.topic||"").trim(),hw:"",noHw:a.date<td,count:null,files:[],board:[],video:"",marks:{},createdAt:Date.now()+k};
+    S.lessons.push(Object.assign({id:ref.id},data));
+    write(ref.path,function(){return ref.set(data);});
+  });
+  Object.keys(PL.dels).forEach(function(id){
+    var l=findLesson(id); if(!l)return;
+    S.lessons.splice(S.lessons.indexOf(l),1);
+    (l.files||[]).concat(l.board||[]).forEach(function(f){S.assets&&S.assets.delete(f.id).catch(function(){});});
+    write("lessons/"+id,function(){return S.db.doc("lessons/"+id).delete();});
+  });
+  var n=planDirty();
+  PL.edits={}; PL.adds=[]; PL.dels={}; PL.confirm=false; PL.msg="Сохранено изменений: "+n+".";
+  if(document.activeElement)document.activeElement.blur();
+  render();
+}
 
 function renderDebts(g,ls){
   var withHw=ls.filter(function(l){return !l.noHw;});
@@ -1009,7 +1154,28 @@ document.addEventListener("click",function(e){
   var a=b.getAttribute("data-action"), d=b.dataset;
   switch(a){
     case "dismiss": S.notice=null; render(); break;
-    case "tab": S.groupId=d.g; store("tj-group",d.g); render(); break;
+    case "tab":
+      if(planDirty()&&PL.gid!==d.g){S.notice="В плане группы есть несохранённые изменения. Сохраните или отмените их, прежде чем переходить в другую группу.";render();break;}
+      S.groupId=d.g; store("tj-group",d.g); render(); break;
+    case "pg-day": PL.days[+d.i]=!PL.days[+d.i]; PL.msg=""; render(); break;
+    case "pg-go": {
+      var lsA=groupLessons(S.groupId), gd=genDates(lsA);
+      gd.forEach(function(dt){PL.adds.push({id:"new-"+(++PL.seq),date:dt,topic:""});});
+      PL.msg=gd.length?"В план добавлено "+gd.length+" "+plural(gd.length,"занятие","занятия","занятий")+". Впишите темы и нажмите «Сохранить» внизу.":"";
+      render(); break;}
+    case "pl-add": {
+      var rowsA=planRows(groupLessons(S.groupId)), lastD=rowsA.length?rowsA[rowsA.length-1].date:today();
+      var nd=rowsA.length?addDays(lastD,1):today(); var nid="new-"+(++PL.seq);
+      PL.adds.push({id:nid,date:nd,topic:""}); PL.msg=""; render();
+      var ni=document.querySelector('.pd[data-id="'+nid+'"]'); if(ni){ni.focus();ni.scrollIntoView({block:"center"});}
+      break;}
+    case "pl-del":
+      if(/^new-/.test(d.id))PL.adds=PL.adds.filter(function(a){return a.id!==d.id;}); else PL.dels[d.id]=1;
+      PL.confirm=false; render(); break;
+    case "pl-undel": delete PL.dels[d.id]; PL.confirm=false; render(); break;
+    case "pl-cancel": PL.edits={}; PL.adds=[]; PL.dels={}; PL.confirm=false; PL.msg=""; render(); break;
+    case "pl-ask": PL.confirm=true; refreshPlanBar(); break;
+    case "pl-save": planSave(); break;
     case "view": S.view=d.v; render(); break;
     case "period": S.period={preset:d.v}; savePeriod(); render(); break;
     case "att": case "hw": {
@@ -1098,6 +1264,12 @@ document.addEventListener("click",function(e){
   }
 });
 document.addEventListener("input",function(e){
+  var t0=e.target;
+  if(PL&&S.view==="plan"&&t0.dataset&&t0.dataset.id&&(t0.classList.contains("pd")||t0.classList.contains("pt"))){planInput(t0);return;}
+  if(t0.id==="pg-from"||t0.id==="pg-to"){PL[t0.id==="pg-from"?"from":"to"]=t0.value;PL.msg="";
+    var gd=genDates(groupLessons(S.groupId)), gb=document.querySelector('[data-action="pg-go"]');
+    if(gb){gb.disabled=!gd.length;gb.textContent=gd.length?"Добавить в план "+gd.length+" "+plural(gd.length,"занятие","занятия","занятий"):"Добавить в план";}
+    return;}
   if(!M)return; var t=e.target;
   if(M.kind==="lesson"){
     if(t.id==="m-date")M.date=t.value; else if(t.id==="m-topic")M.topic=t.value; else if(t.id==="m-hw")M.hw=t.value; else if(t.id==="m-count")M.count=t.value; else if(t.id==="m-labels")M.labels=t.value; else if(t.id==="m-video")M.video=t.value;
@@ -1307,6 +1479,8 @@ function doImport(){
     .then(function(j){st.textContent="Готово: групп "+j.groups+", занятий "+j.lessons+", файлов "+j.files+". Обновляю страницу…";setTimeout(function(){location.reload();},1500);})
     .catch(function(e){M.busy=false;go.disabled=false;st.textContent="Не получилось: "+e.message;});
 }
+
+window.addEventListener("beforeunload",function(e){if(planDirty()){e.preventDefault();e.returnValue="";}});
 
 /* ---------- запуск ---------- */
 function init(){
