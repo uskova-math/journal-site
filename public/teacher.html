@@ -440,7 +440,7 @@ function render(){
   if(S.view==="plan"&&ae&&ae.tagName==="INPUT"&&ae.closest&&ae.closest("#plan"))return;
   if(S.mode==="catalog"&&ae&&ae.tagName==="INPUT"&&ae.type==="text"&&ae.closest&&ae.closest("#app"))return;
   var h='<header class="top"><div><h1>Журнал групп</h1><p class="sub">Посещаемость и домашние задания</p></div>';
-  if(S.db&&S.canWrite&&S.loaded.g)h+='<div class="top-btns">'+(window.SITE?'<button class="btn ghost" data-action="cat-open">Каталог заданий</button>':'')+(S.groups.length?'<button class="btn ghost" data-action="links">Ссылки учеников</button>':'')+'<button class="btn ghost" data-action="groups">Группы и ученики</button></div>';
+  if(S.db&&S.canWrite&&S.loaded.g)h+='<div class="top-btns">'+(window.SITE?'<button class="btn ghost" data-action="cat-open">Банк заданий</button>':'')+(S.groups.length?'<button class="btn ghost" data-action="links">Ссылки учеников</button>':'')+'<button class="btn ghost" data-action="groups">Группы и ученики</button></div>';
   h+='<div class="site-links"><button class="link" data-action="import">Перенос данных</button><button class="link" data-action="logout">Выйти</button></div>';
   if(!window.SITE&&S.db&&S.loaded.l&&dl)h+='<div class="site-links"><button class="link" data-action="export">Экспорт для переезда</button></div>';
   h+='</header>';
@@ -1516,7 +1516,7 @@ window.addEventListener("beforeunload",function(e){if(planDirty()){e.preventDefa
 /* ---------- каталог заданий ---------- */
 var CAT_TPL={
   oge:{name:"ОГЭ",tasks:[["1–5","Практические задачи (квартира, участок, шины и т. п.)"],["6","Вычисления: дроби"],["7","Числа на прямой"],["8","Степени и корни"],["9","Уравнения"],["10","Теория вероятностей"],["11","Графики функций"],["12","Расчёты по формулам"],["13","Неравенства"],["14","Прогрессии и последовательности"],["15","Треугольники"],["16","Окружность"],["17","Четырёхугольники"],["18","Фигуры на клетчатой бумаге"],["19","Верные и неверные утверждения"],["20","Алгебраические выражения, уравнения, системы"],["21","Текстовая задача"],["22","Построение графика функции"],["23","Геометрическая задача на вычисление"],["24","Геометрическая задача на доказательство"],["25","Геометрическая задача повышенной сложности"]]},
-  ege:null // заполняется по нумерации преподавателя
+  ege:{name:"ЕГЭ профиль",tasks:[["1","Планиметрия"],["2","Векторы"],["3","Стереометрия"],["4","Простая вероятность"],["5","Сложная вероятность"],["6","Простейшие уравнения"],["7","Значение выражения"],["8","Производная и первообразная"],["9","Задачи с прикладным содержанием"],["10","Текстовые задачи"],["11","Графики функций"],["12","Исследование функции (производная)"],["13","Тригонометрическое уравнение"],["14","Стереометрия"],["15","Неравенства"],["16","Экономика"],["17","Планиметрия"],["18","Параметры"],["19","Числа и их свойства"]]}
 };
 var CT={cur:null,open:{},form:null,saveT:{}}; // открытый каталог, раскрытые задания, открытая форма ссылки
 function catById(id){for(var i=0;i<S.cats.length;i++)if(S.cats[i].id===id)return S.cats[i];return null;}
@@ -1542,31 +1542,31 @@ function newCatalog(kind){
   S.cats.push(cat); CT.cur=cat.id; saveCat(cat); render();
 }
 function renderCatalog(){
-  var h='<div class="toolbar"><button class="btn ghost" data-action="cat-back">← К журналу</button></div>';
-  if(!S.catsLoaded)return h+'<div class="panel empty">Загружаю каталог…</div>';
+  var h='<div class="toolbar"><button class="btn ghost" data-action="cat-back">← К журналу</button><h2 style="margin:0">Банк заданий</h2></div>';
+  if(!S.catsLoaded)return h+'<div class="panel empty">Загружаю банк заданий…</div>';
   if(CT.cur&&!catById(CT.cur))CT.cur=null;
   if(!CT.cur&&S.cats.length)CT.cur=S.cats[0].id;
-  h+='<nav class="tabs" aria-label="Каталоги">'+S.cats.map(function(c){
+  h+='<nav class="tabs" aria-label="Разделы банка заданий">'+S.cats.map(function(c){
     return '<button class="tab" data-action="cat-tab" data-c="'+esc(c.id)+'" aria-pressed="'+(c.id===CT.cur)+'">'+esc(c.name||"Без названия")+'</button>';}).join("")+
-    '<button class="tab cat-new" data-action="cat-new-open">+ Новый каталог</button></nav>';
+    '<button class="tab cat-new" data-action="cat-new-open">+ Новый раздел</button></nav>';
   if(CT.newOpen||!S.cats.length){
-    h+='<section class="panel"><h2>Новый каталог</h2><p class="hint" style="margin:6px 0 10px">Выберите готовый список заданий или начните с пустого.</p><div class="top-btns">'+
-      (CAT_TPL.ege?'<button class="btn" data-action="cat-create" data-k="ege">ЕГЭ профиль ('+CAT_TPL.ege.tasks.length+' заданий)</button>':'')+
-      '<button class="btn" data-action="cat-create" data-k="oge">ОГЭ (25 заданий)</button>'+
+    h+='<section class="panel"><h2>Новый раздел банка заданий</h2><p class="hint" style="margin:6px 0 10px">Выберите готовый список номеров или начните с пустого.</p><div class="top-btns">'+
+      (CAT_TPL.ege?'<button class="btn" data-action="cat-create" data-k="ege">ЕГЭ профиль ('+CAT_TPL.ege.tasks.length+' номеров)</button>':'')+
+      '<button class="btn" data-action="cat-create" data-k="oge">ОГЭ (25 номеров)</button>'+
       '<button class="btn ghost" data-action="cat-create" data-k="">Пустой</button>'+
       (S.cats.length?'<button class="link" data-action="cat-new-close">Отмена</button>':'')+'</div></section>';
     if(!S.cats.length)return h;
   }
   var cat=catById(CT.cur);
-  h+='<section class="panel cat-head" id="cat"><div class="field"><label for="cat-name">Название каталога</label><input type="text" id="cat-name" value="'+esc(cat.name||"")+'"></div>'+
+  h+='<section class="panel cat-head" id="cat"><div class="field"><label for="cat-name">Название раздела</label><input type="text" id="cat-name" value="'+esc(cat.name||"")+'"></div>'+
     '<div class="field"><span class="flabel">Каким группам виден</span><div class="cat-groups">'+S.groups.map(function(g){
       var on=(cat.groups||[]).indexOf(g.id)>=0;
       return '<label class="check"><input type="checkbox" data-catg="'+esc(g.id)+'"'+(on?' checked':'')+'> '+esc(g.name)+'</label>';}).join("")+'</div></div>'+
-    '<p class="hint">Уроки попадают в задание сами, если в теме урока есть его номер, например «№16 метод интервалов». Темы удобно править во вкладке «План» у группы.</p></section>';
+    '<p class="hint">Уроки попадают в номер сами, если в теме урока есть «№» и этот номер, например «№16 экономика». Темы удобно править во вкладке «План» у группы.</p></section>';
   h+='<div class="cat-list">'+(cat.tasks||[]).map(function(t,ti){return renderCatTask(cat,t,ti);}).join("")+'</div>'+
-    '<div class="cat-foot"><button class="btn ghost" data-action="cat-task-add">+ Добавить задание</button>'+
-    (CT.delCat?'<span class="confirm">Удалить каталог «'+esc(cat.name)+'» целиком?<button class="btn" style="background:var(--miss);border-color:var(--miss)" data-action="cat-del-yes">Удалить</button><button class="link" data-action="cat-del-no">Отмена</button></span>'
-      :'<button class="btn danger" data-action="cat-del">Удалить каталог</button>')+'</div>';
+    '<div class="cat-foot"><button class="btn ghost" data-action="cat-task-add">+ Добавить номер</button>'+
+    (CT.delCat?'<span class="confirm">Удалить раздел «'+esc(cat.name)+'» целиком?<button class="btn" style="background:var(--miss);border-color:var(--miss)" data-action="cat-del-yes">Удалить</button><button class="link" data-action="cat-del-no">Отмена</button></span>'
+      :'<button class="btn danger" data-action="cat-del">Удалить раздел</button>')+'</div>';
   return h;
 }
 function renderCatTask(cat,t,ti){
@@ -1589,11 +1589,11 @@ function renderCatTask(cat,t,ti){
       return '<span class="cat-item"><a href="'+esc(m.url)+'" target="_blank" rel="noopener noreferrer">'+esc(m.name||m.url)+'</a><button class="x" data-action="cat-item-del" data-t="'+esc(t.id)+'" data-w="practice" data-i="'+k+'" aria-label="Убрать">×</button></span>';}).join("")+'</div>':'<p class="hint">Добавьте ссылки на задания с автопроверкой.</p>')+
     '<div class="cat-btns"><button class="btn ghost" data-action="cat-form" data-t="'+esc(t.id)+'" data-w="practice">Добавить ссылку</button></div>'+catForm(t,"practice")+'</div>';
   // занятия
-  h+='<div class="cat-sec"><div class="label">Наши занятия по этому заданию</div>'+(ls.length?'<ul class="cat-ls">'+ls.map(function(l){
+  h+='<div class="cat-sec"><div class="label">Наши занятия по этому номеру</div>'+(ls.length?'<ul class="cat-ls">'+ls.map(function(l){
       var g=S.groups.filter(function(x){return x.id===l.groupId;})[0];
       return '<li>'+esc(fmtShort(l.date))+' · '+esc(l.topic)+' <span class="muted">· '+esc(g?g.name:"")+'</span></li>';}).join("")+'</ul>'
-    :'<p class="hint">Пока нет занятий с номером '+esc(t.n||"")+' в теме'+((cat.groups||[]).length?'':', и каталог не привязан ни к одной группе')+'.</p>')+'</div>';
-  h+='<div class="cat-foot2"><button class="btn danger" data-action="cat-task-del" data-t="'+esc(t.id)+'">Удалить задание</button></div></div>';
+    :'<p class="hint">Пока нет занятий с номером '+esc(t.n||"")+' в теме'+((cat.groups||[]).length?'':', и раздел не привязан ни к одной группе')+'.</p>')+'</div>';
+  h+='<div class="cat-foot2"><button class="btn danger" data-action="cat-task-del" data-t="'+esc(t.id)+'">Удалить номер</button></div></div>';
   return h+'</article>';
 }
 function catForm(t,w){
