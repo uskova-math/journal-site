@@ -83,7 +83,7 @@ h2{font-size:16px;margin:0 0 10px}
 .hwsub.drop{background:var(--ink-soft)}
 /* варианты */
 .v-list{display:flex;flex-direction:column;gap:8px}
-.v-set{margin:18px 0 8px;font-size:17px}.v-set:first-child{margin-top:0}
+.v-set{margin:18px 0 8px;font-size:17px}.v-setname{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:2px}.v-set:first-child{margin-top:0}
 .v-card{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;text-decoration:none;color:var(--text)}
 .v-card:hover{border-color:var(--ink)}
 .v-title{font-weight:600}
@@ -470,7 +470,7 @@ function renderVariants(){
   var sets=[];vs.forEach(function(v){if(sets.indexOf(v.set||"")<0)sets.push(v.set||"");});
   return sets.map(function(st){
     return (sets.length>1?'<h2 class="v-set">'+esc(st||"Другие варианты")+'</h2>':'')+'<div class="v-list">'+vs.filter(function(v){return (v.set||"")===st;}).map(function(v){
-      return '<a class="v-card" href="#v-'+esc(v.id)+'"><span class="v-title">'+esc(v.title)+'</span><span class="v-st">'+varStatus(v)+'</span></a>';
+      return '<a class="v-card" href="#v-'+esc(v.id)+'"><span class="v-title">'+esc(v.title)+(v.set?'<span class="v-setname">'+esc(v.set)+'</span>':'')+'</span><span class="v-st">'+varStatus(v)+'</span></a>';
     }).join("")+'</div>';
   }).join("");
 }

@@ -382,7 +382,10 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .vt-row .cat-row{flex:1;min-width:240px}
 .vt-groups{display:flex;gap:4px 14px;flex-wrap:wrap;padding:6px 14px;font-size:14px}
 .vt-tasks{display:flex;flex-direction:column;gap:10px}
-.vt-set{margin:14px 0 2px;font-size:16px}
+.vt-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.vt-tabs .tab[aria-pressed="true"] .vt-cnt{color:var(--on-ink);opacity:.8}
+.vt-cnt{color:var(--muted);font-weight:400;margin-left:2px}
+.vt-setname{color:var(--muted);font-weight:400;margin-left:6px}
 .vt-res th .vt-small{display:block;font-weight:400}
 .vt-task{display:grid;grid-template-columns:34px 1fr;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px}
 .vt-img{max-width:100%;height:auto;display:block;background:#fff;border-radius:6px;margin-bottom:6px}
@@ -1692,7 +1695,7 @@ function attSummary(a,v){
   return {count:sc.length,first:sc[0],best:Math.max.apply(null,sc),total:(v.part1||[]).length,revealed:Object.keys(a.revealed||{}).length,at:a.updated||a.attempts[a.attempts.length-1].at};
 }
 function saveVar(v){var d=Object.assign({},v);delete d.id;write("variants/"+v.id,function(){return S.db.doc("variants/"+v.id).set(d);});}
-function vSet(v){if(v.set)return String(v.set);var m=/(20\d\d)/.exec(String(v.source||""));return m?"ЕГЭ "+m[1]:"";}
+function vSet(v){var st=String(v.set||"").trim(),src=String(v.source||"");if(st&&!/^ЕГЭ 20\d\d$/.test(st))return st;var m=/(20\d\d)/.exec(st)||/(20\d\d)/.exec(src);if(!m)return st;return (/ЕГЭ\s*проф/i.test(src)?"ЕГЭ профиль ":"ЕГЭ ")+m[1];}
 function renderVariantsT(){
   var h='<div class="toolbar"><button class="btn ghost" data-action="vt-back">← К журналу</button><h2 style="margin:0">Варианты</h2></div>';
   h+='<section class="panel vt-up"><h2>Загрузить варианты</h2><p class="hint" style="margin:6px 0 10px">Архив с вариантами, который подготовил Claude: задания картинками и ответы. Ответы хранятся только на вашем сервере, ученикам они не видны.</p>'+
@@ -1701,15 +1704,21 @@ function renderVariantsT(){
   var vs=S.vars.slice().sort(function(a,b){return vSet(b).localeCompare(vSet(a),'ru',{numeric:true})||String(a.title||'').localeCompare(String(b.title||''),'ru',{numeric:true})||(a.order||0)-(b.order||0);});
   var vsets=[];vs.forEach(function(v){if(vsets.indexOf(vSet(v))<0)vsets.push(vSet(v));});
   if(!vs.length)return h+'<div class="panel empty">Вариантов пока нет.</div>';
+  // вкладки по сборникам
+  if(vsets.indexOf(VT.set)<0)VT.set=vsets[0];
+  if(vsets.length>1)h+='<div class="vt-tabs" role="tablist" aria-label="Сборники">'+vsets.map(function(st){
+    var n=vs.filter(function(v){return vSet(v)===st;}).length;
+    return '<button class="tab" role="tab" data-action="vt-set" data-set="'+esc(st)+'" aria-selected="'+(st===VT.set)+'" aria-pressed="'+(st===VT.set)+'">'+esc(st||"Без сборника")+' <span class="vt-cnt">'+n+'</span></button>';}).join("")+'</div>';
+  vs=vs.filter(function(v){return vSet(v)===VT.set;});
   // результаты
   var g=S.groups.filter(function(x){return x.id===VT.group;})[0]||curGroup()||S.groups[0];
   if(g){
     var gv=vs.filter(function(v){return (v.groups||[]).indexOf(g.id)>=0;});
-    h+='<section class="panel"><div class="plan-head"><h2>Результаты</h2><div class="seg" role="group" aria-label="Группа">'+S.groups.map(function(x){
+    h+='<section class="panel"><div class="plan-head"><h2>Результаты'+(VT.set?' · '+esc(VT.set):'')+'</h2><div class="seg" role="group" aria-label="Группа">'+S.groups.map(function(x){
       return '<button data-action="vt-group" data-g="'+esc(x.id)+'" aria-pressed="'+(x.id===g.id)+'">'+esc(x.name)+'</button>';}).join("")+'</div></div>';
     if(!gv.length)h+='<p class="hint" style="margin-top:8px">Группе «'+esc(g.name)+'» пока не открыт ни один вариант. Отметьте группу у нужных вариантов ниже.</p>';
     else{
-      h+='<div class="table-wrap" style="margin-top:10px;overflow-x:auto"><table class="vt-res"><thead><tr><th scope="col">Ученик</th>'+gv.map(function(v){var yy=(/(20\d\d)/.exec(vSet(v))||[])[1];return '<th scope="col" title="'+esc(v.title+(vSet(v)?' · '+vSet(v):''))+'">'+esc(v.title.replace(/^Вариант\s*/,"В"))+(vsets.length>1&&yy?'<span class="vt-small">'+yy+'</span>':'')+'</th>';}).join("")+'</tr></thead><tbody>'+
+      h+='<div class="table-wrap" style="margin-top:10px;overflow-x:auto"><table class="vt-res"><thead><tr><th scope="col">Ученик</th>'+gv.map(function(v){var yy=(/(20\d\d)/.exec(vSet(v))||[])[1];return '<th scope="col" title="'+esc(v.title+(vSet(v)?' · '+vSet(v):''))+'">'+esc(v.title.replace(/^Вариант\s*/,"В"))+'</th>';}).join("")+'</tr></thead><tbody>'+
         (g.students||[]).map(function(s){
           return '<tr><th scope="row">'+esc(s.name)+'</th>'+gv.map(function(v){
             var r=attSummary(attFor(v.id,s.id),v), sub=subFor("var-"+v.id,s.id), hasSub=sub&&((sub.files&&sub.files.length)||sub.comment);
@@ -1723,15 +1732,15 @@ function renderVariantsT(){
   }
   var lastSet=null;
   h+='<div class="cat-list">'+vs.map(function(v){
-    var head=(vsets.length>1&&vSet(v)!==lastSet)?'<h2 class="vt-set">'+esc(vSet(v)||"Без сборника")+'</h2>':''; lastSet=vSet(v);
+    var head='';
     var open=!!VT.open[v.id], n1=(v.part1||[]).length, noAns=(v.part1||[]).filter(function(t){return !t.answer;}).length;
     var x=head+'<article class="cat-task'+(open?' open':'')+'"><div class="vt-row"><button class="cat-row" data-action="vt-toggle" data-v="'+esc(v.id)+'" aria-expanded="'+open+'">'+
-      '<span class="cat-title">'+esc(v.title)+'</span><span class="cat-meta">'+n1+' + '+(v.part2||[]).length+' заданий'+(noAns?' · без ответа: '+noAns:'')+'</span><span class="cat-chev" aria-hidden="true">'+(open?'▴':'▾')+'</span></button>'+
+      '<span class="cat-title">'+esc(v.title)+(vSet(v)?' <span class="vt-setname">'+esc(vSet(v))+'</span>':'')+'</span><span class="cat-meta">'+n1+' + '+(v.part2||[]).length+' заданий'+(noAns?' · без ответа: '+noAns:'')+'</span><span class="cat-chev" aria-hidden="true">'+(open?'▴':'▾')+'</span></button>'+
       '<span class="vt-groups">'+S.groups.map(function(gr){var on=(v.groups||[]).indexOf(gr.id)>=0;
         return '<label class="check"><input type="checkbox" data-vtg="'+esc(v.id)+'" data-g="'+esc(gr.id)+'"'+(on?' checked':'')+'> '+esc(gr.name)+'</label>';}).join("")+'</span></div>';
     if(open){
       x+='<div class="cat-body"><div class="field" style="max-width:420px"><label for="vtt-'+v.id+'">Название</label><input type="text" id="vtt-'+v.id+'" data-vtt="'+esc(v.id)+'" value="'+esc(v.title)+'"></div>'+
-        '<div class="field" style="max-width:420px"><label for="vts-'+v.id+'">Сборник</label><input type="text" id="vts-'+v.id+'" data-vts="'+esc(v.id)+'" value="'+esc(vSet(v))+'" placeholder="например, ЕГЭ 2026"></div>'+
+        '<div class="field" style="max-width:420px"><label for="vts-'+v.id+'">Сборник</label><input type="text" id="vts-'+v.id+'" data-vts="'+esc(v.id)+'" value="'+esc(vSet(v))+'" placeholder="например, ЕГЭ профиль 2026"></div>'+
         '<p class="hint">Проверьте картинки и ответы. Ответ можно исправить прямо здесь. Если подходят несколько записей, разделите их чертой: <b>0,5|1/2</b>. Запятая и точка считаются одинаково.</p>'+
         '<div class="vt-tasks">'+(v.part1||[]).map(function(t,k){
           return '<div class="vt-task"><div class="v-n">'+esc(t.n)+'</div><div>'+(t.files||[]).map(function(f){return '<img class="vt-img" src="'+esc(f.url||("/_blob/"+f.id))+'" alt="" loading="lazy">';}).join("")+
@@ -1751,6 +1760,7 @@ function vtAction(a,d){
     case "vt-open": S.mode="variants"; window.scrollTo(0,0); render(); return true;
     case "vt-back": S.mode=null; render(); return true;
     case "vt-group": VT.group=d.g; render(); return true;
+    case "vt-set": VT.set=d.set; render(); return true;
     case "vt-toggle": VT.open[d.v]=!VT.open[d.v]; render(); return true;
     case "vt-del": VT.del=d.v; render(); return true;
     case "vt-del-no": VT.del=null; render(); return true;

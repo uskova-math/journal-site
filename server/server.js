@@ -264,9 +264,11 @@ function attemptsPublic(a, v) {
 }
 // Сборник варианта: явное поле set или год из source («… ЕГЭпроф 2025» → «ЕГЭ 2025»)
 function variantSet(v) {
-  if (v.set) return String(v.set);
-  const m = /(20\d\d)/.exec(String(v.source || ''));
-  return m ? 'ЕГЭ ' + m[1] : '';
+  const set = String(v.set || '').trim(), src = String(v.source || '');
+  if (set && !/^ЕГЭ 20\d\d$/.test(set)) return set;          // своё название учителя
+  const m = /(20\d\d)/.exec(set) || /(20\d\d)/.exec(src);
+  if (!m) return set;
+  return (/ЕГЭ\s*проф/i.test(src) ? 'ЕГЭ профиль ' : 'ЕГЭ ') + m[1];
 }
 function publicVariant(id, v, sid) {
   const strip = t => ({ n: String(t.n), files: t.files || [] });
