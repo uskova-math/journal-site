@@ -90,7 +90,7 @@ const Q = {
   linkAll: db.prepare('SELECT student_id, token FROM student_links'),
   linkPut: db.prepare('INSERT INTO student_links (student_id, token, created) VALUES (?, ?, ?) ON CONFLICT(student_id) DO UPDATE SET token = excluded.token, created = excluded.created'),
 };
-const COLLS = new Set(['groups', 'lessons', 'submissions']);
+const COLLS = new Set(['groups', 'lessons', 'submissions', 'catalogs']);
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 function allDocs(coll) { return Q.list.all(coll).map(r => ({ id: r.id, data: JSON.parse(r.data), updated: r.updated })); }
 function getDoc(coll, id) { const r = Q.get.get(coll, id); return r ? JSON.parse(r.data) : null; }
@@ -323,6 +323,11 @@ function studentPayload(tok) {
   return {
     student: { id: sid, name: me.name },
     groups: groups.map(g => ({ id: g.id, name: g.data.name })),
+    catalogs: allDocs('catalogs')
+      .filter(c => (c.data.groups || []).some(id => gids.has(id)))
+      .sort((a, b) => (a.data.order || 0) - (b.data.order || 0))
+      .map(c => ({ id: c.id, name: c.data.name || 'Задания', tasks: (c.data.tasks || []).map(t => ({
+        n: String(t.n || ''), title: t.title || '', materials: t.materials || [], practice: t.practice || [] })) })),
     lessons, groupAvg: avg, groupAvgByMonth: avgByMonth,
   };
 }

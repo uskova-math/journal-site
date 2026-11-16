@@ -351,6 +351,32 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .pb-btns{display:flex;gap:8px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 @media (max-width:600px){.plan-t .pwd{display:none}.plan-t .pt{min-width:140px}}
+/* каталог */
+.cat-new{border-style:dashed}
+.cat-head{display:flex;flex-direction:column;gap:12px}
+.cat-head input[type=text]{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:8px 10px;max-width:420px}
+.cat-groups{display:flex;flex-wrap:wrap;gap:6px 18px}
+.cat-list{display:flex;flex-direction:column;gap:6px}
+.cat-task{background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.cat-task.open{border-color:var(--ink)}
+.cat-row{display:flex;align-items:center;gap:12px;width:100%;background:none;border:none;padding:10px 14px;cursor:pointer;text-align:left}
+.cat-n{font-family:var(--font-display);font-weight:600;font-size:15px;min-width:44px;color:var(--ink)}
+.cat-title{flex:1;font-weight:500}
+.cat-meta{font-size:13px;color:var(--muted);white-space:nowrap}
+.cat-chev{color:var(--muted)}
+.cat-body{border-top:1px solid var(--line);padding:12px 14px;display:flex;flex-direction:column;gap:14px}
+.cat-fields{display:flex;gap:10px;flex-wrap:wrap}
+.cat-fields input{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:7px 10px;width:100%}
+.cat-sec{display:flex;flex-direction:column;gap:6px}
+.cat-items{display:flex;flex-wrap:wrap;gap:6px}
+.cat-item{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:3px 4px 3px 10px;font-size:14px}
+.cat-item a{color:var(--ink)}
+.cat-btns{display:flex;gap:8px;flex-wrap:wrap}
+.cat-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--paper);border-radius:8px;padding:8px}
+.cat-form input{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:6px 8px;flex:1;min-width:180px}
+.cat-ls{margin:0;padding-left:18px;font-size:14px;display:flex;flex-direction:column;gap:2px}
+.cat-foot,.cat-foot2{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
+@media (max-width:600px){.cat-meta{display:none}}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
@@ -362,7 +388,7 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 <script>
 (function(){
 "use strict";
-var S = {db:null, assets:null, canWrite:true, groups:[], lessons:[], subs:[], groupId:null, view:"list",
+var S = {db:null, assets:null, canWrite:true, groups:[], lessons:[], subs:[], cats:[], catsLoaded:false, mode:null, groupId:null, view:"list",
          loaded:{g:false,l:false}, stale:false, fatal:null, notice:null};
 var M = null; // открытое окно
 S.period = (function(){try{var v=JSON.parse(localStorage.getItem("tj-period")||"null");if(v&&v.preset)return v;}catch(e){}return {preset:"all"};})();
@@ -412,8 +438,9 @@ function onWriteError(e){
 function render(){
   var ae=document.activeElement;
   if(S.view==="plan"&&ae&&ae.tagName==="INPUT"&&ae.closest&&ae.closest("#plan"))return;
+  if(S.mode==="catalog"&&ae&&ae.tagName==="INPUT"&&ae.type==="text"&&ae.closest&&ae.closest("#app"))return;
   var h='<header class="top"><div><h1>Журнал групп</h1><p class="sub">Посещаемость и домашние задания</p></div>';
-  if(S.db&&S.canWrite&&S.loaded.g)h+='<div class="top-btns">'+(S.groups.length?'<button class="btn ghost" data-action="links">Ссылки учеников</button>':'')+'<button class="btn ghost" data-action="groups">Группы и ученики</button></div>';
+  if(S.db&&S.canWrite&&S.loaded.g)h+='<div class="top-btns">'+(window.SITE?'<button class="btn ghost" data-action="cat-open">Каталог заданий</button>':'')+(S.groups.length?'<button class="btn ghost" data-action="links">Ссылки учеников</button>':'')+'<button class="btn ghost" data-action="groups">Группы и ученики</button></div>';
   h+='<div class="site-links"><button class="link" data-action="import">Перенос данных</button><button class="link" data-action="logout">Выйти</button></div>';
   if(!window.SITE&&S.db&&S.loaded.l&&dl)h+='<div class="site-links"><button class="link" data-action="export">Экспорт для переезда</button></div>';
   h+='</header>';
@@ -423,6 +450,7 @@ function render(){
     h+='<div class="panel empty">'+(S.stale?"Журнал пока не загрузился. Проверьте интернет: страница подтянет данные сама, как только связь появится.":"Загружаю журнал…")+'</div>';
     $("#app").innerHTML=h;return;
   }
+  if(S.mode==="catalog"){$("#app").innerHTML=h+renderCatalog();return;}
   if(!S.groups.length){
     h+='<div class="panel empty">Групп пока нет.'+(S.canWrite?'<br><button class="btn" data-action="groups">Добавить группы и учеников</button>':'')+'</div>';
     $("#app").innerHTML=h;return;
@@ -1152,6 +1180,7 @@ document.addEventListener("click",function(e){
   if(P.open&&!e.target.closest(".rp-pop")&&!(b&&b.getAttribute("data-action")==="rp-toggle")){rpClose();render();if(!b)return;}
   if(!b)return;
   var a=b.getAttribute("data-action"), d=b.dataset;
+  if(a.indexOf("cat-")===0&&catAction(a,d,b))return;
   switch(a){
     case "dismiss": S.notice=null; render(); break;
     case "tab":
@@ -1265,6 +1294,7 @@ document.addEventListener("click",function(e){
 });
 document.addEventListener("input",function(e){
   var t0=e.target;
+  if(S.mode==="catalog"&&catInput(t0))return;
   if(PL&&S.view==="plan"&&t0.dataset&&t0.dataset.id&&(t0.classList.contains("pd")||t0.classList.contains("pt"))){planInput(t0);return;}
   if(t0.id==="pg-from"||t0.id==="pg-to"){PL[t0.id==="pg-from"?"from":"to"]=t0.value;PL.msg="";
     var gd=genDates(groupLessons(S.groupId)), gb=document.querySelector('[data-action="pg-go"]');
@@ -1279,6 +1309,7 @@ document.addEventListener("input",function(e){
   }
 });
 document.addEventListener("change",function(e){
+  if(S.mode==="catalog"&&catChange(e.target))return;
   var t=e.target;
   if(t.id==="p-from"||t.id==="p-to"){
     var cur=S.period.preset==="custom"?S.period:{};
@@ -1482,6 +1513,151 @@ function doImport(){
 
 window.addEventListener("beforeunload",function(e){if(planDirty()){e.preventDefault();e.returnValue="";}});
 
+/* ---------- каталог заданий ---------- */
+var CAT_TPL={
+  oge:{name:"ОГЭ",tasks:[["1–5","Практические задачи (квартира, участок, шины и т. п.)"],["6","Вычисления: дроби"],["7","Числа на прямой"],["8","Степени и корни"],["9","Уравнения"],["10","Теория вероятностей"],["11","Графики функций"],["12","Расчёты по формулам"],["13","Неравенства"],["14","Прогрессии и последовательности"],["15","Треугольники"],["16","Окружность"],["17","Четырёхугольники"],["18","Фигуры на клетчатой бумаге"],["19","Верные и неверные утверждения"],["20","Алгебраические выражения, уравнения, системы"],["21","Текстовая задача"],["22","Построение графика функции"],["23","Геометрическая задача на вычисление"],["24","Геометрическая задача на доказательство"],["25","Геометрическая задача повышенной сложности"]]},
+  ege:null // заполняется по нумерации преподавателя
+};
+var CT={cur:null,open:{},form:null,saveT:{}}; // открытый каталог, раскрытые задания, открытая форма ссылки
+function catById(id){for(var i=0;i<S.cats.length;i++)if(S.cats[i].id===id)return S.cats[i];return null;}
+function catTaskNums(n){var m=String(n||"").match(/\d+/g);if(!m)return [];var a=m.map(Number);if(/[–-]/.test(n)&&a.length===2&&a[1]>a[0]&&a[1]-a[0]<30){var r=[];for(var i=a[0];i<=a[1];i++)r.push(i);return r;}return a;}
+function topicNums(t){var out=[],re=/№\s*(\d+)(?:\s*[–-]\s*(\d+))?/g,m;while((m=re.exec(String(t||"")))){var a=+m[1],b=m[2]?+m[2]:a;for(var i=a;i<=Math.min(b,a+30);i++)out.push(i);}return out;}
+function catLessons(cat,task){
+  var nums=catTaskNums(task.n), gs=cat.groups||[];
+  if(!nums.length)return [];
+  return S.lessons.filter(function(l){return gs.indexOf(l.groupId)>=0&&l.date<=today()&&topicNums(l.topic).some(function(x){return nums.indexOf(x)>=0;});})
+    .sort(function(a,b){return a.date<b.date?1:-1;});
+}
+function saveCat(cat,delay){
+  clearTimeout(CT.saveT[cat.id]);
+  CT.saveT[cat.id]=setTimeout(function(){
+    var d=Object.assign({},cat); delete d.id;
+    write("catalogs/"+cat.id,function(){return S.db.doc("catalogs/"+cat.id).set(d);});
+  },delay||0);
+}
+function newCatalog(kind){
+  var tpl=CAT_TPL[kind], ref=S.db.collection("catalogs").doc();
+  var cat={id:ref.id,name:tpl?tpl.name:"Новый каталог",order:S.cats.length,groups:[],
+    tasks:(tpl?tpl.tasks:[]).map(function(t){return {id:rid(),n:t[0],title:t[1],materials:[],practice:[]};})};
+  S.cats.push(cat); CT.cur=cat.id; saveCat(cat); render();
+}
+function renderCatalog(){
+  var h='<div class="toolbar"><button class="btn ghost" data-action="cat-back">← К журналу</button></div>';
+  if(!S.catsLoaded)return h+'<div class="panel empty">Загружаю каталог…</div>';
+  if(CT.cur&&!catById(CT.cur))CT.cur=null;
+  if(!CT.cur&&S.cats.length)CT.cur=S.cats[0].id;
+  h+='<nav class="tabs" aria-label="Каталоги">'+S.cats.map(function(c){
+    return '<button class="tab" data-action="cat-tab" data-c="'+esc(c.id)+'" aria-pressed="'+(c.id===CT.cur)+'">'+esc(c.name||"Без названия")+'</button>';}).join("")+
+    '<button class="tab cat-new" data-action="cat-new-open">+ Новый каталог</button></nav>';
+  if(CT.newOpen||!S.cats.length){
+    h+='<section class="panel"><h2>Новый каталог</h2><p class="hint" style="margin:6px 0 10px">Выберите готовый список заданий или начните с пустого.</p><div class="top-btns">'+
+      (CAT_TPL.ege?'<button class="btn" data-action="cat-create" data-k="ege">ЕГЭ профиль ('+CAT_TPL.ege.tasks.length+' заданий)</button>':'')+
+      '<button class="btn" data-action="cat-create" data-k="oge">ОГЭ (25 заданий)</button>'+
+      '<button class="btn ghost" data-action="cat-create" data-k="">Пустой</button>'+
+      (S.cats.length?'<button class="link" data-action="cat-new-close">Отмена</button>':'')+'</div></section>';
+    if(!S.cats.length)return h;
+  }
+  var cat=catById(CT.cur);
+  h+='<section class="panel cat-head" id="cat"><div class="field"><label for="cat-name">Название каталога</label><input type="text" id="cat-name" value="'+esc(cat.name||"")+'"></div>'+
+    '<div class="field"><span class="flabel">Каким группам виден</span><div class="cat-groups">'+S.groups.map(function(g){
+      var on=(cat.groups||[]).indexOf(g.id)>=0;
+      return '<label class="check"><input type="checkbox" data-catg="'+esc(g.id)+'"'+(on?' checked':'')+'> '+esc(g.name)+'</label>';}).join("")+'</div></div>'+
+    '<p class="hint">Уроки попадают в задание сами, если в теме урока есть его номер, например «№16 метод интервалов». Темы удобно править во вкладке «План» у группы.</p></section>';
+  h+='<div class="cat-list">'+(cat.tasks||[]).map(function(t,ti){return renderCatTask(cat,t,ti);}).join("")+'</div>'+
+    '<div class="cat-foot"><button class="btn ghost" data-action="cat-task-add">+ Добавить задание</button>'+
+    (CT.delCat?'<span class="confirm">Удалить каталог «'+esc(cat.name)+'» целиком?<button class="btn" style="background:var(--miss);border-color:var(--miss)" data-action="cat-del-yes">Удалить</button><button class="link" data-action="cat-del-no">Отмена</button></span>'
+      :'<button class="btn danger" data-action="cat-del">Удалить каталог</button>')+'</div>';
+  return h;
+}
+function renderCatTask(cat,t,ti){
+  var ls=catLessons(cat,t), open=!!CT.open[t.id], mats=t.materials||[], prs=t.practice||[];
+  var h='<article class="cat-task'+(open?' open':'')+'"><button class="cat-row" data-action="cat-toggle" data-t="'+esc(t.id)+'" aria-expanded="'+open+'">'+
+    '<span class="cat-n">'+esc(t.n||"?")+'</span><span class="cat-title">'+esc(t.title||"Без названия")+'</span>'+
+    '<span class="cat-meta">'+[mats.length?mats.length+' матер.':'',prs.length?prs.length+' трен.':'',ls.length?ls.length+' '+plural(ls.length,"урок","урока","уроков"):''].filter(Boolean).join(" · ")+'</span>'+
+    '<span class="cat-chev" aria-hidden="true">'+(open?'▴':'▾')+'</span></button>';
+  if(!open)return h+'</article>';
+  h+='<div class="cat-body"><div class="cat-fields"><div class="field" style="max-width:110px"><label for="tn-'+t.id+'">Номер</label><input type="text" id="tn-'+t.id+'" data-tn="'+esc(t.id)+'" value="'+esc(t.n||"")+'"></div>'+
+    '<div class="field" style="flex:1"><label for="tt-'+t.id+'">Название</label><input type="text" id="tt-'+t.id+'" data-tt="'+esc(t.id)+'" value="'+esc(t.title||"")+'"></div></div>';
+  // материалы
+  h+='<div class="cat-sec"><div class="label">Материалы</div>'+(mats.length?'<div class="cat-items">'+mats.map(function(m,k){
+      return '<span class="cat-item">'+(m.url&&m.kind==="link"?'<a href="'+esc(m.url)+'" target="_blank" rel="noopener noreferrer">'+esc(m.name||m.url)+'</a>':'<button class="link" data-action="cat-open-file" data-t="'+esc(t.id)+'" data-i="'+k+'">'+esc(m.name)+'</button>')+
+        '<button class="x" data-action="cat-item-del" data-t="'+esc(t.id)+'" data-w="materials" data-i="'+k+'" aria-label="Убрать">×</button></span>';}).join("")+'</div>':'<p class="hint">Пока пусто.</p>')+
+    '<div class="cat-btns">'+(S.assets?'<label class="btn ghost" for="cf-'+t.id+'" style="cursor:pointer">Прикрепить файл</label><input type="file" id="cf-'+t.id+'" data-catfile="'+esc(t.id)+'" multiple accept="image/*,application/pdf,.pdf" hidden>':'')+
+    '<button class="btn ghost" data-action="cat-form" data-t="'+esc(t.id)+'" data-w="materials">Добавить ссылку</button></div>'+catForm(t,"materials")+'</div>';
+  // тренировка
+  h+='<div class="cat-sec"><div class="label">Потренироваться</div>'+(prs.length?'<div class="cat-items">'+prs.map(function(m,k){
+      return '<span class="cat-item"><a href="'+esc(m.url)+'" target="_blank" rel="noopener noreferrer">'+esc(m.name||m.url)+'</a><button class="x" data-action="cat-item-del" data-t="'+esc(t.id)+'" data-w="practice" data-i="'+k+'" aria-label="Убрать">×</button></span>';}).join("")+'</div>':'<p class="hint">Добавьте ссылки на задания с автопроверкой.</p>')+
+    '<div class="cat-btns"><button class="btn ghost" data-action="cat-form" data-t="'+esc(t.id)+'" data-w="practice">Добавить ссылку</button></div>'+catForm(t,"practice")+'</div>';
+  // занятия
+  h+='<div class="cat-sec"><div class="label">Наши занятия по этому заданию</div>'+(ls.length?'<ul class="cat-ls">'+ls.map(function(l){
+      var g=S.groups.filter(function(x){return x.id===l.groupId;})[0];
+      return '<li>'+esc(fmtShort(l.date))+' · '+esc(l.topic)+' <span class="muted">· '+esc(g?g.name:"")+'</span></li>';}).join("")+'</ul>'
+    :'<p class="hint">Пока нет занятий с номером '+esc(t.n||"")+' в теме'+((cat.groups||[]).length?'':', и каталог не привязан ни к одной группе')+'.</p>')+'</div>';
+  h+='<div class="cat-foot2"><button class="btn danger" data-action="cat-task-del" data-t="'+esc(t.id)+'">Удалить задание</button></div></div>';
+  return h+'</article>';
+}
+function catForm(t,w){
+  if(!CT.form||CT.form.t!==t.id||CT.form.w!==w)return "";
+  return '<div class="cat-form"><input type="text" id="cfl" placeholder="'+(w==="practice"?"Подпись, например: Тренажёр, базовый уровень":"Подпись, например: Конспект по теме")+'" aria-label="Подпись">'+
+    '<input type="text" id="cfu" inputmode="url" placeholder="Ссылка: https://…" aria-label="Ссылка">'+
+    '<button class="btn" data-action="cat-form-add" data-t="'+esc(t.id)+'" data-w="'+w+'">Добавить</button><button class="link" data-action="cat-form-close">Отмена</button></div>';
+}
+function catTask(cat,tid){var r=null;(cat.tasks||[]).forEach(function(t){if(t.id===tid)r=t;});return r;}
+function catAction(a,d,b){
+  var cat=catById(CT.cur), t=cat&&d.t?catTask(cat,d.t):null;
+  switch(a){
+    case "cat-open": S.mode="catalog"; window.scrollTo(0,0); render(); return true;
+    case "cat-back": S.mode=null; render(); return true;
+    case "cat-tab": CT.cur=d.c; CT.newOpen=false; CT.delCat=false; render(); return true;
+    case "cat-new-open": CT.newOpen=true; render(); return true;
+    case "cat-new-close": CT.newOpen=false; render(); return true;
+    case "cat-create": CT.newOpen=false; newCatalog(d.k); return true;
+    case "cat-toggle": CT.open[d.t]=!CT.open[d.t]; render(); return true;
+    case "cat-task-add": {var nt={id:rid(),n:"",title:"",materials:[],practice:[]};cat.tasks=(cat.tasks||[]).concat([nt]);CT.open[nt.id]=true;saveCat(cat);render();
+      var el=document.getElementById("tn-"+nt.id);if(el){el.focus();el.scrollIntoView({block:"center"});}return true;}
+    case "cat-task-del": cat.tasks=cat.tasks.filter(function(x){return x.id!==d.t;});
+      (t&&t.materials||[]).forEach(function(m){if(m.id&&S.assets)S.assets.delete(m.id).catch(function(){});});
+      saveCat(cat);render();return true;
+    case "cat-del": CT.delCat=true; render(); return true;
+    case "cat-del-no": CT.delCat=false; render(); return true;
+    case "cat-del-yes": S.cats=S.cats.filter(function(x){return x.id!==cat.id;}); CT.delCat=false; CT.cur=null;
+      write("catalogs/"+cat.id,function(){return S.db.doc("catalogs/"+cat.id).delete();}); render(); return true;
+    case "cat-form": CT.form={t:d.t,w:d.w}; render(); var f=document.getElementById("cfl"); if(f)f.focus(); return true;
+    case "cat-form-close": CT.form=null; render(); return true;
+    case "cat-form-add": {
+      var lab=$("#cfl").value.trim(), url=normUrl($("#cfu").value);
+      if(!url){$("#cfu").focus();return true;}
+      t[d.w]=(t[d.w]||[]).concat([{kind:"link",name:lab||hostOf(url),url:url}]); CT.form=null; saveCat(cat); render(); return true;}
+    case "cat-item-del": {var it=t[d.w][+d.i]; if(it&&it.id&&S.assets)S.assets.delete(it.id).catch(function(){});
+      t[d.w]=t[d.w].filter(function(x,k){return k!==+d.i;}); saveCat(cat); render(); return true;}
+    case "cat-open-file": {var fl=(t.materials||[]).filter(function(m){return m.kind!=="link";});var fm=t.materials[+d.i];
+      V={files:fl,i:Math.max(0,fl.indexOf(fm))};renderViewer();return true;}
+  }
+  return false;
+}
+function catInput(tg){
+  var cat=catById(CT.cur); if(!cat)return false;
+  if(tg.id==="cat-name"){cat.name=tg.value;saveCat(cat,600);var tb=document.querySelector('.tab[data-c="'+cat.id+'"]');if(tb)tb.textContent=cat.name||"Без названия";return true;}
+  if(tg.dataset.tn){var t=catTask(cat,tg.dataset.tn);t.n=tg.value.trim();saveCat(cat,600);return true;}
+  if(tg.dataset.tt){var t2=catTask(cat,tg.dataset.tt);t2.title=tg.value;saveCat(cat,600);return true;}
+  return false;
+}
+function catChange(tg){
+  var cat=catById(CT.cur); if(!cat)return false;
+  if(tg.dataset.catg){var gs=(cat.groups||[]).filter(function(x){return x!==tg.dataset.catg;});if(tg.checked)gs.push(tg.dataset.catg);cat.groups=gs;saveCat(cat);render();return true;}
+  if(tg.dataset.catfile&&tg.files&&tg.files.length){
+    var t=catTask(cat,tg.dataset.catfile), list=Array.prototype.slice.call(tg.files); tg.value="";
+    list.forEach(function(file){
+      S.assets.upload(file).then(function(r){
+        t.materials=(t.materials||[]).concat([{kind:"file",id:r.id,url:r.url||("/_blob/"+r.id),name:file.name,type:r.contentType||file.type}]);
+        saveCat(cat); render();
+      },function(){S.notice="Не получилось загрузить «"+file.name+"». Подходят PDF и картинки до 20 МБ.";render();});
+    });
+    return true;
+  }
+  return false;
+}
+
 /* ---------- запуск ---------- */
 function init(){
   render();
@@ -1506,6 +1682,10 @@ function init(){
       S.lessons=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
       S.loaded.l=true; settle(snap.metadata); render();
     },fail);
+    if(window.SITE)db.collection("catalogs").onSnapshot(function(snap){
+      S.cats=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());}).sort(function(a,b){return (a.order||0)-(b.order||0);});
+      S.catsLoaded=true; if(S.mode==="catalog")render();
+    },function(){S.catsLoaded=true;});
     if(window.SITE)db.collection("submissions").onSnapshot(function(snap){
       S.subs=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
       render();
