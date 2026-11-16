@@ -1695,7 +1695,7 @@ function renderVariantsT(){
   h+='<section class="panel vt-up"><h2>Загрузить варианты</h2><p class="hint" style="margin:6px 0 10px">Архив с вариантами, который подготовил Claude: задания картинками и ответы. Ответы хранятся только на вашем сервере, ученикам они не видны.</p>'+
     '<div class="cat-btns"><label class="btn" for="vt-file" style="cursor:pointer">Выбрать архив</label><input type="file" id="vt-file" accept=".zip,application/zip" hidden></div>'+
     (VT.msg?'<p class="pg-msg" role="status" style="margin-top:8px">'+esc(VT.msg)+'</p>':'')+'</section>';
-  var vs=S.vars.slice().sort(function(a,b){return (a.order||0)-(b.order||0);});
+  var vs=S.vars.slice().sort(function(a,b){return String(a.title||'').localeCompare(String(b.title||''),'ru',{numeric:true})||(a.order||0)-(b.order||0);});
   if(!vs.length)return h+'<div class="panel empty">Вариантов пока нет.</div>';
   // результаты
   var g=S.groups.filter(function(x){return x.id===VT.group;})[0]||curGroup()||S.groups[0];

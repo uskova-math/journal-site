@@ -410,7 +410,7 @@ function studentPayload(tok) {
     variants: allDocs('variants')
       .filter(v => (v.data.groups || []).some(id => gids.has(id)))
       .map(v => publicVariant(v.id, v.data, sid))
-      .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title, 'ru', { numeric: true })),
+      .sort((a, b) => a.title.localeCompare(b.title, 'ru', { numeric: true }) || a.order - b.order),
     catalogs: allDocs('catalogs')
       .filter(c => (c.data.groups || []).some(id => gids.has(id)))
       .sort((a, b) => (a.data.order || 0) - (b.data.order || 0))
