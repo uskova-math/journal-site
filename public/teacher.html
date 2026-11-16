@@ -377,6 +377,22 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .cat-ls{margin:0;padding-left:18px;font-size:14px;display:flex;flex-direction:column;gap:2px}
 .cat-foot,.cat-foot2{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
 @media (max-width:600px){.cat-meta{display:none}}
+/* варианты */
+.vt-row{display:flex;align-items:center;flex-wrap:wrap}
+.vt-row .cat-row{flex:1;min-width:240px}
+.vt-groups{display:flex;gap:4px 14px;flex-wrap:wrap;padding:6px 14px;font-size:14px}
+.vt-tasks{display:flex;flex-direction:column;gap:10px}
+.vt-task{display:grid;grid-template-columns:34px 1fr;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px}
+.vt-img{max-width:100%;height:auto;display:block;background:#fff;border-radius:6px;margin-bottom:6px}
+.v-n{font-family:var(--font-display);font-weight:600;font-size:18px;color:var(--ink)}
+.v-ans{display:flex;align-items:center;gap:8px}
+.v-ans label{font-size:13px;color:var(--muted);font-weight:600}
+.v-ans input{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:6px 10px;width:180px}
+.v-ans input.vt-miss{border-color:var(--miss);background:var(--miss-soft)}
+.vt-res th,.vt-res td{white-space:nowrap;text-align:center;vertical-align:top;padding:6px 8px}
+.vt-res th:first-child{text-align:left}
+.vt-res td{display:table-cell}
+.vt-small{display:block;font-size:11px;color:var(--muted);margin-top:2px}
 @media (prefers-reduced-motion: reduce){*{transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
@@ -388,7 +404,7 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 <script>
 (function(){
 "use strict";
-var S = {db:null, assets:null, canWrite:true, groups:[], lessons:[], subs:[], cats:[], catsLoaded:false, mode:null, groupId:null, view:"list",
+var S = {db:null, assets:null, canWrite:true, groups:[], lessons:[], subs:[], cats:[], catsLoaded:false, mode:null, vars:[], atts:[], groupId:null, view:"list",
          loaded:{g:false,l:false}, stale:false, fatal:null, notice:null};
 var M = null; // открытое окно
 S.period = (function(){try{var v=JSON.parse(localStorage.getItem("tj-period")||"null");if(v&&v.preset)return v;}catch(e){}return {preset:"all"};})();
@@ -438,9 +454,9 @@ function onWriteError(e){
 function render(){
   var ae=document.activeElement;
   if(S.view==="plan"&&ae&&ae.tagName==="INPUT"&&ae.closest&&ae.closest("#plan"))return;
-  if(S.mode==="catalog"&&ae&&ae.tagName==="INPUT"&&ae.type==="text"&&ae.closest&&ae.closest("#app"))return;
+  if((S.mode==="catalog"||S.mode==="variants")&&ae&&ae.tagName==="INPUT"&&ae.type==="text"&&ae.closest&&ae.closest("#app"))return;
   var h='<header class="top"><div><h1>Журнал групп</h1><p class="sub">Посещаемость и домашние задания</p></div>';
-  if(S.db&&S.canWrite&&S.loaded.g)h+='<div class="top-btns">'+(window.SITE?'<button class="btn ghost" data-action="cat-open">Банк заданий</button>':'')+(S.groups.length?'<button class="btn ghost" data-action="links">Ссылки учеников</button>':'')+'<button class="btn ghost" data-action="groups">Группы и ученики</button></div>';
+  if(S.db&&S.canWrite&&S.loaded.g)h+='<div class="top-btns">'+(window.SITE?'<button class="btn ghost" data-action="vt-open">Варианты</button><button class="btn ghost" data-action="cat-open">Банк заданий</button>':'')+(S.groups.length?'<button class="btn ghost" data-action="links">Ссылки учеников</button>':'')+'<button class="btn ghost" data-action="groups">Группы и ученики</button></div>';
   h+='<div class="site-links"><button class="link" data-action="import">Перенос данных</button><button class="link" data-action="logout">Выйти</button></div>';
   if(!window.SITE&&S.db&&S.loaded.l&&dl)h+='<div class="site-links"><button class="link" data-action="export">Экспорт для переезда</button></div>';
   h+='</header>';
@@ -451,6 +467,7 @@ function render(){
     $("#app").innerHTML=h;return;
   }
   if(S.mode==="catalog"){$("#app").innerHTML=h+renderCatalog();return;}
+  if(S.mode==="variants"){$("#app").innerHTML=h+renderVariantsT();return;}
   if(!S.groups.length){
     h+='<div class="panel empty">Групп пока нет.'+(S.canWrite?'<br><button class="btn" data-action="groups">Добавить группы и учеников</button>':'')+'</div>';
     $("#app").innerHTML=h;return;
@@ -654,17 +671,18 @@ function renderRec(l){
     (b.length?'<div class="rec-sub">Записи с доски</div>'+renderFiles(b,l.id,"board"):'')+'</div>';
 }
 /* ---------- работы учеников ---------- */
+function subVar(lid){return /^var-/.test(lid||"")?varById(lid.slice(4)):null;}
 function subFor(lid,sid){for(var i=0;i<S.subs.length;i++){var x=S.subs[i];if(x.lessonId===lid&&x.studentId===sid)return x;}return null;}
 function subUnseen(x){return !!x&&((x.files&&x.files.length)||x.comment)&&!(x.seenAt>=(x.updated||0));}
 var fSubTime=new Intl.DateTimeFormat("ru-RU",{day:"numeric",month:"long",hour:"2-digit",minute:"2-digit"});
 function renderNewWorks(g){
   var names={};(g.students||[]).forEach(function(s){names[s.id]=s.name;});
-  var list=S.subs.filter(function(x){return names[x.studentId]&&subUnseen(x)&&findLesson(x.lessonId);})
+  var list=S.subs.filter(function(x){return names[x.studentId]&&subUnseen(x)&&(findLesson(x.lessonId)||subVar(x.lessonId));})
     .sort(function(a,b){return (b.updated||0)-(a.updated||0);});
   if(!list.length)return "";
   return '<section class="panel nw"><div class="debts-head"><h2>Новые работы</h2><span class="muted">'+list.length+' '+plural(list.length,"работа ждёт","работы ждут","работ ждут")+' проверки</span></div><div class="chips">'+
-    list.map(function(x){var l=findLesson(x.lessonId), n=(x.files||[]).length;
-      return '<button class="chip nw-chip" data-action="sub-open" data-l="'+esc(x.lessonId)+'" data-s="'+esc(x.studentId)+'">'+esc(names[x.studentId])+' · к '+fmtShort(l.date)+' · '+(n?n+' '+plural(n,"файл","файла","файлов"):"комментарий")+'</button>';
+    list.map(function(x){var l=findLesson(x.lessonId), vv=subVar(x.lessonId), n=(x.files||[]).length;
+      return '<button class="chip nw-chip" data-action="sub-open" data-l="'+esc(x.lessonId)+'" data-s="'+esc(x.studentId)+'">'+esc(names[x.studentId])+' · '+(vv?esc(vv.title)+', ч. 2':'к '+fmtShort(l.date))+' · '+(n?n+' '+plural(n,"файл","файла","файлов"):"комментарий")+'</button>';
     }).join("")+'</div></section>';
 }
 function subButton(l,s){
@@ -675,7 +693,8 @@ function subButton(l,s){
 function openSub(lid,sid){
   var x=subFor(lid,sid), l=findLesson(lid), g=curGroup(); if(!x)return;
   var st=(g&&g.students||[]).filter(function(s){return s.id===sid;})[0];
-  var note=(st?st.name+' · ':'')+'к занятию '+(l?fmtLong(l.date):'')+' · прислано '+fSubTime.format(new Date(x.updated||Date.now()))+(x.comment?'\nКомментарий: '+x.comment:'');
+  var vv=subVar(lid); if(!st)S.groups.forEach(function(gg){(gg.students||[]).forEach(function(z){if(z.id===sid)st=z;});});
+  var note=(st?st.name+' · ':'')+(vv?vv.title+', часть 2':'к занятию '+(l?fmtLong(l.date):''))+' · прислано '+fSubTime.format(new Date(x.updated||Date.now()))+(x.comment?'\nКомментарий: '+x.comment:'');
   if(x.files&&x.files.length){V={files:x.files,i:0,note:note,sub:x.id};renderViewer();}
   else{V={files:[{id:'',name:'Комментарий',type:'text/note'}],i:0,note:note,sub:x.id};renderViewer();}
   if(subUnseen(x)){
@@ -1181,6 +1200,7 @@ document.addEventListener("click",function(e){
   if(!b)return;
   var a=b.getAttribute("data-action"), d=b.dataset;
   if(a.indexOf("cat-")===0&&catAction(a,d,b))return;
+  if(a.indexOf("vt-")===0&&vtAction(a,d))return;
   switch(a){
     case "dismiss": S.notice=null; render(); break;
     case "tab":
@@ -1295,6 +1315,7 @@ document.addEventListener("click",function(e){
 document.addEventListener("input",function(e){
   var t0=e.target;
   if(S.mode==="catalog"&&catInput(t0))return;
+  if(S.mode==="variants"&&vtInput(t0))return;
   if(PL&&S.view==="plan"&&t0.dataset&&t0.dataset.id&&(t0.classList.contains("pd")||t0.classList.contains("pt"))){planInput(t0);return;}
   if(t0.id==="pg-from"||t0.id==="pg-to"){PL[t0.id==="pg-from"?"from":"to"]=t0.value;PL.msg="";
     var gd=genDates(groupLessons(S.groupId)), gb=document.querySelector('[data-action="pg-go"]');
@@ -1310,6 +1331,7 @@ document.addEventListener("input",function(e){
 });
 document.addEventListener("change",function(e){
   if(S.mode==="catalog"&&catChange(e.target))return;
+  if(S.mode==="variants"&&vtChange(e.target))return;
   var t=e.target;
   if(t.id==="p-from"||t.id==="p-to"){
     var cur=S.period.preset==="custom"?S.period:{};
@@ -1658,6 +1680,101 @@ function catChange(tg){
   return false;
 }
 
+/* ---------- варианты (учитель) ---------- */
+var VT={open:{},del:null,msg:"",busy:false,group:null};
+function varById(id){for(var i=0;i<S.vars.length;i++)if(S.vars[i].id===id)return S.vars[i];return null;}
+function attFor(vid,sid){for(var i=0;i<S.atts.length;i++){var a=S.atts[i];if(a.variantId===vid&&a.studentId===sid)return a;}return null;}
+function attSummary(a,v){
+  if(!a||!a.attempts||!a.attempts.length)return null;
+  var sc=a.attempts.map(function(x){return (x.correct||[]).length;});
+  return {count:sc.length,first:sc[0],best:Math.max.apply(null,sc),total:(v.part1||[]).length,revealed:Object.keys(a.revealed||{}).length,at:a.updated||a.attempts[a.attempts.length-1].at};
+}
+function saveVar(v){var d=Object.assign({},v);delete d.id;write("variants/"+v.id,function(){return S.db.doc("variants/"+v.id).set(d);});}
+function renderVariantsT(){
+  var h='<div class="toolbar"><button class="btn ghost" data-action="vt-back">← К журналу</button><h2 style="margin:0">Варианты</h2></div>';
+  h+='<section class="panel vt-up"><h2>Загрузить варианты</h2><p class="hint" style="margin:6px 0 10px">Архив с вариантами, который подготовил Claude: задания картинками и ответы. Ответы хранятся только на вашем сервере, ученикам они не видны.</p>'+
+    '<div class="cat-btns"><label class="btn" for="vt-file" style="cursor:pointer">Выбрать архив</label><input type="file" id="vt-file" accept=".zip,application/zip" hidden></div>'+
+    (VT.msg?'<p class="pg-msg" role="status" style="margin-top:8px">'+esc(VT.msg)+'</p>':'')+'</section>';
+  var vs=S.vars.slice().sort(function(a,b){return (a.order||0)-(b.order||0);});
+  if(!vs.length)return h+'<div class="panel empty">Вариантов пока нет.</div>';
+  // результаты
+  var g=S.groups.filter(function(x){return x.id===VT.group;})[0]||curGroup()||S.groups[0];
+  if(g){
+    var gv=vs.filter(function(v){return (v.groups||[]).indexOf(g.id)>=0;});
+    h+='<section class="panel"><div class="plan-head"><h2>Результаты</h2><div class="seg" role="group" aria-label="Группа">'+S.groups.map(function(x){
+      return '<button data-action="vt-group" data-g="'+esc(x.id)+'" aria-pressed="'+(x.id===g.id)+'">'+esc(x.name)+'</button>';}).join("")+'</div></div>';
+    if(!gv.length)h+='<p class="hint" style="margin-top:8px">Группе «'+esc(g.name)+'» пока не открыт ни один вариант. Отметьте группу у нужных вариантов ниже.</p>';
+    else{
+      h+='<div class="table-wrap" style="margin-top:10px;overflow-x:auto"><table class="vt-res"><thead><tr><th scope="col">Ученик</th>'+gv.map(function(v){return '<th scope="col" title="'+esc(v.title)+'">'+esc(v.title.replace(/^Вариант\s*/,"В"))+'</th>';}).join("")+'</tr></thead><tbody>'+
+        (g.students||[]).map(function(s){
+          return '<tr><th scope="row">'+esc(s.name)+'</th>'+gv.map(function(v){
+            var r=attSummary(attFor(v.id,s.id),v), sub=subFor("var-"+v.id,s.id), hasSub=sub&&((sub.files&&sub.files.length)||sub.comment);
+            var cell=r?'<span class="sc-t '+scoreCls(r.best,r.total)+'">'+r.best+'/'+r.total+'</span><span class="vt-small">1-я: '+r.first+' · ×'+r.count+(r.revealed?' · подсм. '+r.revealed:'')+'</span>':'<span class="muted">—</span>';
+            if(hasSub)cell+='<button class="sub-b'+(subUnseen(sub)?' new':'')+'" data-action="sub-open" data-l="var-'+esc(v.id)+'" data-s="'+esc(s.id)+'">ч. 2</button>';
+            return '<td>'+cell+'</td>';
+          }).join("")+'</tr>';
+        }).join("")+'</tbody></table></div><p class="hint" style="margin-top:8px">В клетке: лучший результат первой части, ниже — результат с первой попытки, число попыток и сколько ответов ученик подсмотрел. «ч. 2» — фото решений второй части.</p>';
+    }
+    h+='</section>';
+  }
+  h+='<div class="cat-list">'+vs.map(function(v){
+    var open=!!VT.open[v.id], n1=(v.part1||[]).length, noAns=(v.part1||[]).filter(function(t){return !t.answer;}).length;
+    var x='<article class="cat-task'+(open?' open':'')+'"><div class="vt-row"><button class="cat-row" data-action="vt-toggle" data-v="'+esc(v.id)+'" aria-expanded="'+open+'">'+
+      '<span class="cat-title">'+esc(v.title)+'</span><span class="cat-meta">'+n1+' + '+(v.part2||[]).length+' заданий'+(noAns?' · без ответа: '+noAns:'')+'</span><span class="cat-chev" aria-hidden="true">'+(open?'▴':'▾')+'</span></button>'+
+      '<span class="vt-groups">'+S.groups.map(function(gr){var on=(v.groups||[]).indexOf(gr.id)>=0;
+        return '<label class="check"><input type="checkbox" data-vtg="'+esc(v.id)+'" data-g="'+esc(gr.id)+'"'+(on?' checked':'')+'> '+esc(gr.name)+'</label>';}).join("")+'</span></div>';
+    if(open){
+      x+='<div class="cat-body"><div class="field" style="max-width:420px"><label for="vtt-'+v.id+'">Название</label><input type="text" id="vtt-'+v.id+'" data-vtt="'+esc(v.id)+'" value="'+esc(v.title)+'"></div>'+
+        '<p class="hint">Проверьте картинки и ответы. Ответ можно исправить прямо здесь. Если подходят несколько записей, разделите их чертой: <b>0,5|1/2</b>. Запятая и точка считаются одинаково.</p>'+
+        '<div class="vt-tasks">'+(v.part1||[]).map(function(t,k){
+          return '<div class="vt-task"><div class="v-n">'+esc(t.n)+'</div><div>'+(t.files||[]).map(function(f){return '<img class="vt-img" src="'+esc(f.url||("/_blob/"+f.id))+'" alt="" loading="lazy">';}).join("")+
+            '<div class="v-ans"><label for="vta-'+v.id+'-'+k+'">Ответ</label><input type="text" id="vta-'+v.id+'-'+k+'" data-vta="'+esc(v.id)+'" data-k="'+k+'" value="'+esc(t.answer||"")+'"'+(t.answer?'':' class="vt-miss" placeholder="нет ответа"')+'></div></div></div>';
+        }).join("")+(v.part2||[]).map(function(t){
+          return '<div class="vt-task"><div class="v-n">'+esc(t.n)+'</div><div>'+(t.files||[]).map(function(f){return '<img class="vt-img" src="'+esc(f.url||("/_blob/"+f.id))+'" alt="" loading="lazy">';}).join("")+'<p class="hint">Вторая часть: ученик присылает фото решения.</p></div></div>';
+        }).join("")+'</div>'+
+        '<div class="cat-foot2">'+(VT.del===v.id?'<span class="confirm">Удалить «'+esc(v.title)+'» вместе с результатами учеников?<button class="btn" style="background:var(--miss);border-color:var(--miss)" data-action="vt-del-yes" data-v="'+esc(v.id)+'">Удалить</button><button class="link" data-action="vt-del-no">Отмена</button></span>'
+          :'<button class="btn danger" data-action="vt-del" data-v="'+esc(v.id)+'">Удалить вариант</button>')+'</div></div>';
+    }
+    return x+'</article>';
+  }).join("")+'</div>';
+  return h;
+}
+function vtAction(a,d){
+  switch(a){
+    case "vt-open": S.mode="variants"; window.scrollTo(0,0); render(); return true;
+    case "vt-back": S.mode=null; render(); return true;
+    case "vt-group": VT.group=d.g; render(); return true;
+    case "vt-toggle": VT.open[d.v]=!VT.open[d.v]; render(); return true;
+    case "vt-del": VT.del=d.v; render(); return true;
+    case "vt-del-no": VT.del=null; render(); return true;
+    case "vt-del-yes": {
+      var v=varById(d.v); if(!v)return true;
+      (v.part1||[]).concat(v.part2||[]).forEach(function(t){(t.files||[]).forEach(function(f){S.assets&&S.assets.delete(f.id).catch(function(){});});});
+      S.vars=S.vars.filter(function(x){return x.id!==v.id;});
+      write("variants/"+v.id,function(){return S.db.doc("variants/"+v.id).delete();});
+      S.atts.filter(function(x){return x.variantId===v.id;}).forEach(function(x){write("attempts/"+x.id,function(){return S.db.doc("attempts/"+x.id).delete();});});
+      VT.del=null; render(); return true;}
+  }
+  return false;
+}
+function vtInput(t){
+  if(t.dataset.vtt){var v=varById(t.dataset.vtt);v.title=t.value;clearTimeout(VT.tt);VT.tt=setTimeout(function(){saveVar(v);},600);return true;}
+  if(t.dataset.vta){var v2=varById(t.dataset.vta);v2.part1[+t.dataset.k].answer=t.value.trim();t.classList.toggle("vt-miss",!t.value.trim());clearTimeout(VT.ta);VT.ta=setTimeout(function(){saveVar(v2);},600);return true;}
+  return false;
+}
+function vtChange(t){
+  if(t.dataset.vtg){var v=varById(t.dataset.vtg);var gs=(v.groups||[]).filter(function(x){return x!==t.dataset.g;});if(t.checked)gs.push(t.dataset.g);v.groups=gs;saveVar(v);render();return true;}
+  if(t.id==="vt-file"&&t.files&&t.files[0]){
+    var f=t.files[0]; t.value=""; VT.msg="Загружаю «"+f.name+"» ("+Math.max(1,Math.round(f.size/1048576))+" МБ)…"; render();
+    fetch("/api/variants/import",{method:"POST",credentials:"same-origin",headers:{"X-Journal":"1","Content-Type":"application/zip"},body:f})
+      .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||("Ошибка "+r.status));return j;});})
+      .then(function(j){VT.msg="Загружено вариантов: "+j.variants.length+". Отметьте у них группы, которым их открыть.";if(window.SITE.refresh)window.SITE.refresh();render();},
+        function(e){VT.msg="Не получилось: "+e.message;render();});
+    return true;
+  }
+  return false;
+}
+
 /* ---------- запуск ---------- */
 function init(){
   render();
@@ -1686,6 +1803,12 @@ function init(){
       S.cats=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());}).sort(function(a,b){return (a.order||0)-(b.order||0);});
       S.catsLoaded=true; if(S.mode==="catalog")render();
     },function(){S.catsLoaded=true;});
+    if(window.SITE)db.collection("variants").onSnapshot(function(snap){
+      S.vars=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());}); if(S.mode==="variants")render();
+    },function(){});
+    if(window.SITE)db.collection("attempts").onSnapshot(function(snap){
+      S.atts=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());}); if(S.mode==="variants")render();
+    },function(){});
     if(window.SITE)db.collection("submissions").onSnapshot(function(snap){
       S.subs=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
       render();

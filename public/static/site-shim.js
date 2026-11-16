@@ -119,5 +119,5 @@
 
   var caps = { db: db, assets: assets, downloads: downloads, user: user };
   window.claude = { use: function (n) { return Promise.resolve(caps[n] || null); } };
-  window.SITE = { api: api };
+  window.SITE = { api: api, refresh: refreshAll };
 })();

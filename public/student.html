@@ -16,7 +16,7 @@
 .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px;position:sticky;top:8px;z-index:3}
 .tabs a{flex:1;text-align:center;padding:8px 10px;border-radius:7px;color:var(--muted);text-decoration:none;font-weight:600}
 .tabs a[aria-current="page"]{background:var(--ink);color:var(--on-ink)}
-@media (max-width:440px){.tabs{gap:2px}.tabs a{flex:1 1 auto;padding:8px 6px;font-size:13px;white-space:nowrap}}
+@media (max-width:600px){.tabs{gap:2px;overflow-x:auto;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}.tabs a{flex:1 0 auto;padding:8px 9px;font-size:14px;white-space:nowrap}}
 h2{font-size:16px;margin:0 0 10px}
 .label{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;margin-bottom:4px}
 .empty{color:var(--muted)}
@@ -81,6 +81,33 @@ h2{font-size:16px;margin:0 0 10px}
 .sub-x{position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--miss);cursor:pointer;font-size:15px;line-height:1;display:grid;place-items:center}
 .sub-act{display:flex;gap:8px;flex-wrap:wrap}
 .hwsub.drop{background:var(--ink-soft)}
+/* варианты */
+.v-list{display:flex;flex-direction:column;gap:8px}
+.v-card{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;text-decoration:none;color:var(--text)}
+.v-card:hover{border-color:var(--ink)}
+.v-title{font-weight:600}
+.v-st{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.v-att{font-size:13px;color:var(--muted)}
+.v-tasks{display:flex;flex-direction:column;gap:10px}
+.v-task{display:grid;grid-template-columns:34px 1fr;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--surface)}
+.v-task.ok{border-color:var(--ok);background:var(--ok-soft)}
+.v-task.bad{border-color:var(--miss);background:var(--miss-soft)}
+.v-n{font-family:var(--font-display);font-weight:600;font-size:18px;color:var(--ink)}
+.v-body{display:flex;flex-direction:column;gap:8px;min-width:0}
+.v-img{max-width:100%;height:auto;background:#fff;border-radius:6px;display:block}
+.v-ans{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.v-ans label{font-size:13px;color:var(--muted);font-weight:600}
+.v-ans input{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 10px;width:160px;font-size:16px;font-variant-numeric:tabular-nums}
+.v-task.ok .v-ans input{border-color:var(--ok)}
+.v-task.bad .v-ans input{border-color:var(--miss)}
+.v-mark{font-weight:700;font-size:14px}
+.v-task.ok .v-mark{color:var(--ok)} .v-task.bad .v-mark{color:var(--miss)}
+.v-go{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-top:14px;position:sticky;bottom:10px;background:var(--surface);padding:10px;border-radius:10px;border:1px solid var(--line)}
+.v-msg{margin:0;font-size:14px}
+.v-rev{font-size:14px}
+.v-rev b{font-size:16px}
+.v-msg:empty{display:none}
+@media (max-width:600px){.v-task{grid-template-columns:1fr}.v-n{font-size:16px}}
 /* задания */
 .cat h2{margin:4px 0 10px}
 .tiles-t{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
@@ -181,6 +208,7 @@ function load(){
     D=j; D.lessons.sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:0;});
     document.title="Кабинет — "+D.student.name;
     route();
+    setTimeout(flushPending,500);
   }).catch(function(e){
     $("#app").innerHTML='<div class="panel empty">'+(e.message==="notfound"?"Ссылка больше не работает. Попросите у преподавателя новую.":"Не получилось загрузить кабинет. Проверьте интернет и обновите страницу.")+'</div>';
   });
@@ -280,7 +308,11 @@ function compress(file){
     img.src=url;
   });
 }
-function findL(id){for(var i=0;i<D.lessons.length;i++)if(D.lessons[i].id===id)return D.lessons[i];return null;}
+function findL(id){
+  for(var i=0;i<D.lessons.length;i++)if(D.lessons[i].id===id)return D.lessons[i];
+  if(/^var-/.test(id)){var v=findV(id.slice(4));if(v)return {id:id,noHw:false,mark:{},variant:v,get sub(){return v.sub;},set sub(x){v.sub=x;}};}
+  return null;
+}
 function keepScroll(fn){var y=window.scrollY;fn();window.scrollTo(0,y);}
 function showErr(lid,t){var e=document.getElementById("err-"+lid);if(e)e.textContent=t||"";}
 function sendFiles(lid,list,prepared){
@@ -418,14 +450,148 @@ function renderTask(){
   return h;
 }
 
+/* ---------- варианты ---------- */
+var VAR=null; // id открытого варианта
+function lsGet(k){try{return JSON.parse(localStorage.getItem(k)||"null");}catch(e){return null;}}
+function lsSet(k,v){try{if(v==null)localStorage.removeItem(k);else localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+function draftKey(vid){return "draft:"+TOKEN+":"+vid;}
+var PEND_KEY=function(){return "pend:"+TOKEN;};
+function findV(id){return (D.variants||[]).filter(function(v){return v.id===id;})[0]||null;}
+function varStatus(v){
+  var r=v.result, n=v.part1.length;
+  if(!r)return lsGet(draftKey(v.id))?'<span class="chip wait">начат, не проверен</span>':'<span class="chip wait">не начат</span>';
+  var cls=r.best>=n?"done":r.best>=n/2?"part":"none";
+  return '<span class="chip '+cls+'">'+r.best+' из '+n+'</span><span class="v-att">'+r.count+' '+plural(r.count,"попытка","попытки","попыток")+'</span>';
+}
+function renderVariants(){
+  var vs=D.variants||[];
+  if(!vs.length)return '<div class="panel empty">Вариантов пока нет.</div>';
+  return '<div class="v-list">'+vs.map(function(v){
+    return '<a class="v-card" href="#v-'+esc(v.id)+'"><span class="v-title">'+esc(v.title)+'</span><span class="v-st">'+varStatus(v)+'</span></a>';
+  }).join("")+'</div>';
+}
+function renderVariant(){
+  var v=VAR&&findV(VAR);
+  if(!v)return '<div class="panel empty">Вариант не найден. <a href="#variants">Все варианты</a></div>';
+  var r=v.result, draft=lsGet(draftKey(v.id))||{}, last=r?r.last:null, ok={};
+  if(last)last.correct.forEach(function(n){ok[n]=1;});
+  var pend=(lsGet(PEND_KEY())||[]).some(function(x){return x.vid===v.id;});
+  var h='<a class="back" href="#variants">← Все варианты</a><header class="task-h"><div><h2 style="margin:0">'+esc(v.title)+'</h2>'+
+    '<div class="v-st" style="margin-top:6px">'+varStatus(v)+(r&&r.count>1?'<span class="v-att">с первой попытки '+r.first+' из '+r.total+'</span>':'')+'</div></div></header>';
+  h+='<section class="panel"><h2>Часть 1 — краткий ответ</h2><p class="hint" style="margin-bottom:10px">Ответы сохраняются на этом устройстве сразу, как вы их вписываете. Когда решите, нажмите «Проверить» внизу. Неверные можно исправить и проверить снова, попыток сколько угодно.</p><div class="v-tasks">';
+  v.part1.forEach(function(t){
+    var val=draft[t.n]!=null?draft[t.n]:(last&&last.answers[t.n]!=null?last.answers[t.n]:"");
+    var checked=last&&last.answers[t.n]!=null&&String(last.answers[t.n])===String(val);
+    var st=!checked?"":ok[t.n]?"ok":"bad";
+    h+='<div class="v-task '+st+'" id="vt-'+esc(t.n)+'"><div class="v-n">'+esc(t.n)+'</div><div class="v-body">'+
+      t.files.map(function(f){return '<img class="v-img" src="'+esc(f.url||("/_blob/"+f.id))+'" alt="Задание '+esc(t.n)+'" loading="lazy">';}).join("")+
+      '<div class="v-ans"><label for="va-'+esc(t.n)+'">Ответ</label><input id="va-'+esc(t.n)+'" data-va="'+esc(t.n)+'" value="'+esc(val)+'" autocomplete="off" spellcheck="false"'+(st==="ok"?' readonly':'')+'>'+
+      '<span class="v-mark" aria-live="polite">'+(st==="ok"?"✓ верно":st==="bad"?"✗ неверно":"")+'</span></div>'+revealPart(v,t,st)+'</div></div>';
+  });
+  h+='</div><div class="v-go"><button class="btn" data-vcheck="'+esc(v.id)+'"'+(pend?' disabled':'')+'>'+(pend?'Отправляю…':'Проверить ответы')+'</button><p class="v-msg" id="v-msg" role="status">'+
+    (pend?'Нет связи с сайтом. Ответы сохранены, отправлю сам, как только связь появится.':'')+'</p></div></section>';
+  if(v.part2.length){
+    h+='<section class="panel"><h2>Часть 2 — развёрнутый ответ</h2><p class="hint" style="margin-bottom:10px">Решите в тетради и пришлите фото решений внизу. Подпишите в тетради номера заданий.</p><div class="v-tasks">'+
+      v.part2.map(function(t){return '<div class="v-task"><div class="v-n">'+esc(t.n)+'</div><div class="v-body">'+t.files.map(function(f){return '<img class="v-img" src="'+esc(f.url||("/_blob/"+f.id))+'" alt="Задание '+esc(t.n)+'" loading="lazy">';}).join("")+'</div></div>';}).join("")+
+      '</div>'+subBlock(varPseudo(v))+'</section>';
+  }
+  return h;
+}
+function revealPart(v,t,st){
+  var r=v.result; if(!r||st==="ok")return "";
+  if(r.revealed&&r.revealed[t.n]!=null)return '<div class="v-rev">Правильный ответ: <b>'+esc(r.revealed[t.n])+'</b></div>';
+  var w=(r.wrong&&r.wrong[t.n])||0;
+  if(w>=3)return '<div class="v-rev"><button class="btn ghost" data-vrev="'+esc(v.id)+'" data-n="'+esc(t.n)+'">Посмотреть ответ</button></div>';
+  if(w>0)return '<div class="v-rev muted">Неверных попыток: '+w+'. После трёх можно посмотреть ответ.</div>';
+  return "";
+}
+function varPseudo(v){return {id:"var-"+v.id,noHw:false,sub:v.sub,mark:{},variant:v};}
+function rid2(){return Math.random().toString(36).slice(2)+Date.now().toString(36);}
+function varCollect(vid){
+  var v=findV(vid), d=lsGet(draftKey(vid))||{}, out={};
+  v.part1.forEach(function(t){var el=document.getElementById("va-"+t.n);var x=el?el.value:d[t.n];if(x!=null&&String(x).trim()!=="")out[t.n]=String(x).trim();});
+  return out;
+}
+function varSend(job){
+  return fetch("/api/s/"+TOKEN+"/check",{method:"POST",credentials:"omit",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({variantId:job.vid,answers:job.answers,clientId:job.clientId})}).then(function(r){
+      if(r.status>=500||r.status===0)throw {net:true};
+      return r.json().catch(function(){return {};}).then(function(j){if(!r.ok)throw {msg:j.error||("Ошибка "+r.status)};return j;});
+    },function(){throw {net:true};});
+}
+function pendList(){return lsGet(PEND_KEY())||[];}
+function pendSave(l){lsSet(PEND_KEY(),l.length?l:null);}
+var RETRY_T=null;
+function flushPending(){
+  var l=pendList(); if(!l.length)return;
+  var job=l[0];
+  varSend(job).then(function(j){
+    pendSave(pendList().filter(function(x){return x.clientId!==job.clientId;}));
+    var v=findV(job.vid); if(v){v.result=j.result;}
+    lsSet(draftKey(job.vid),null);
+    if(VIEW==="variant"&&VAR===job.vid){keepScroll(render);varSummary(j,v);}
+    else if(VIEW==="variants")render();
+    flushPending();
+  },function(e){
+    if(e&&e.net){clearTimeout(RETRY_T);RETRY_T=setTimeout(flushPending,15000);return;}
+    pendSave(pendList().filter(function(x){return x.clientId!==job.clientId;}));
+    if(VIEW==="variant"){keepScroll(render);var m=document.getElementById("v-msg");if(m)m.textContent=(e&&e.msg)||"Не получилось проверить.";}
+  });
+}
+function varSummary(j,v){
+  var m=document.getElementById("v-msg"); if(!m||!v)return;
+  var n=v.part1.length, c=j.correct.length, a=j.answered.length;
+  m.innerHTML='Верно <b>'+c+' из '+n+'</b>.'+(c<a?' <b>Попробуйте ещё раз:</b> исправьте ответы, отмеченные красным, и снова нажмите «Проверить ответы».':'')+(a<n?' Пустых полей: '+(n-a)+'.':'')+(c===n?' Отлично, всё верно!':'');
+  var bad=document.querySelector(".v-task.bad"); if(bad&&c<a)bad.scrollIntoView({block:"center",behavior:"smooth"});
+}
+function varCheck(vid){
+  var answers=varCollect(vid);
+  if(!Object.keys(answers).length){var m=document.getElementById("v-msg");if(m)m.textContent="Впишите хотя бы один ответ.";return;}
+  lsSet(draftKey(vid),answers);
+  var job={vid:vid,answers:answers,clientId:rid2()};
+  var l=pendList().filter(function(x){return x.vid!==vid;}); l.push(job); pendSave(l);
+  var b=document.querySelector("[data-vcheck]"); if(b){b.disabled=true;b.textContent="Проверяю…";}
+  varSend(job).then(function(j){
+    pendSave(pendList().filter(function(x){return x.clientId!==job.clientId;}));
+    var v=findV(vid); v.result=j.result; lsSet(draftKey(vid),null);
+    keepScroll(render); varSummary(j,v);
+  },function(e){
+    if(e&&e.net){keepScroll(render);clearTimeout(RETRY_T);RETRY_T=setTimeout(flushPending,15000);return;}
+    pendSave(pendList().filter(function(x){return x.clientId!==job.clientId;}));
+    keepScroll(render); var m=document.getElementById("v-msg"); if(m)m.textContent=(e&&e.msg)||"Не получилось проверить.";
+  });
+}
+document.addEventListener("input",function(e){
+  var t=e.target; if(!t.dataset||!t.dataset.va||!VAR)return;
+  var d=lsGet(draftKey(VAR))||{}; d[t.dataset.va]=t.value; lsSet(draftKey(VAR),d);
+  var box=t.closest(".v-task"); if(box){box.classList.remove("ok","bad");var mk2=box.querySelector(".v-mark");if(mk2)mk2.textContent="";}
+});
+document.addEventListener("keydown",function(e){
+  var t=e.target; if(e.key!=="Enter"||!t.dataset||!t.dataset.va)return;
+  e.preventDefault(); var all=[].slice.call(document.querySelectorAll("[data-va]:not([readonly])")), i=all.indexOf(t);
+  if(all[i+1])all[i+1].focus(); else {var b=document.querySelector("[data-vcheck]");if(b)b.focus();}
+});
+document.addEventListener("click",function(e){var b=e.target.closest("[data-vcheck]");if(b)varCheck(b.dataset.vcheck);});
+document.addEventListener("click",function(e){
+  var b=e.target.closest("[data-vrev]"); if(!b)return;
+  b.disabled=true;
+  fetch("/api/s/"+TOKEN+"/reveal",{method:"POST",credentials:"omit",headers:{"Content-Type":"application/json"},body:JSON.stringify({variantId:b.dataset.vrev,n:b.dataset.n})})
+    .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||"Ошибка");return j;});})
+    .then(function(j){var v=findV(b.dataset.vrev);if(v)v.result=j.result;keepScroll(render);},
+      function(x){b.disabled=false;b.textContent=x.message;});
+});
+window.addEventListener("online",flushPending);
+
 function render(){
   if(!D)return;
   var groupNames=D.groups.map(function(g){return g.name;}).join(", ");
-  var tabs=[["home","Главная"],["lessons","Уроки"]].concat((D.catalogs||[]).length?[["tasks","Банк заданий"]]:[]).concat([["stats","Статистика"]]);
+  var tabs=[["home","Главная"],["lessons","Уроки"]].concat((D.variants||[]).length?[["variants","Варианты"]]:[]).concat((D.catalogs||[]).length?[["tasks","Банк заданий"]]:[]).concat([["stats","Статистика"]]);
   var h='<header class="top"><h1>Привет, '+esc(D.student.name)+'!</h1><p class="sub">Личный кабинет · '+esc(groupNames)+'</p></header>'+
-    '<nav class="tabs" aria-label="Разделы">'+tabs.map(function(t){return '<a href="#'+t[0]+'"'+(VIEW===t[0]||(VIEW==="task"&&t[0]==="tasks")?' aria-current="page"':'')+'>'+t[1]+'</a>';}).join("")+'</nav>';
-  h+=VIEW==="lessons"?renderLessons():VIEW==="stats"?renderStats():VIEW==="tasks"?renderTasks():VIEW==="task"?renderTask():renderHome();
+    '<nav class="tabs" aria-label="Разделы">'+tabs.map(function(t){return '<a href="#'+t[0]+'"'+(VIEW===t[0]||(VIEW==="task"&&t[0]==="tasks")||(VIEW==="variant"&&t[0]==="variants")?' aria-current="page"':'')+'>'+t[1]+'</a>';}).join("")+'</nav>';
+  h+=VIEW==="lessons"?renderLessons():VIEW==="stats"?renderStats():VIEW==="tasks"?renderTasks():VIEW==="task"?renderTask():VIEW==="variants"?renderVariants():VIEW==="variant"?renderVariant():renderHome();
   $("#app").innerHTML=h;
+  var curTab=document.querySelector('.tabs [aria-current="page"]'), nav=document.querySelector(".tabs");
+  if(curTab&&nav&&nav.scrollWidth>nav.clientWidth)nav.scrollLeft=curTab.offsetLeft-(nav.clientWidth-curTab.offsetWidth)/2;
 }
 function route(){
   var hsh=location.hash.slice(1);
@@ -435,9 +601,11 @@ function route(){
     if(el){el.scrollIntoView({block:"start"});el.classList.add("flash");setTimeout(function(){el.classList.remove("flash");},1600);}
     return;
   }
+  var vm=/^v-([A-Za-z0-9_]+)$/.exec(hsh);
+  if(vm){VAR=vm[1];VIEW="variant";render();window.scrollTo(0,0);return;}
   var tm=/^t-([A-Za-z0-9_]+)-(.+)$/.exec(hsh);
   if(tm){TASK={cid:tm[1],tid:decodeURIComponent(tm[2])};VIEW="task";render();window.scrollTo(0,0);return;}
-  VIEW=hsh==="lessons"||hsh==="stats"||hsh==="tasks"?hsh:"home"; render(); window.scrollTo(0,0);
+  VIEW=hsh==="lessons"||hsh==="stats"||hsh==="tasks"||hsh==="variants"?hsh:"home"; render(); window.scrollTo(0,0);
 }
 window.addEventListener("hashchange",route);
 

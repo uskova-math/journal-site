@@ -90,7 +90,7 @@ const Q = {
   linkAll: db.prepare('SELECT student_id, token FROM student_links'),
   linkPut: db.prepare('INSERT INTO student_links (student_id, token, created) VALUES (?, ?, ?) ON CONFLICT(student_id) DO UPDATE SET token = excluded.token, created = excluded.created'),
 };
-const COLLS = new Set(['groups', 'lessons', 'submissions', 'catalogs']);
+const COLLS = new Set(['groups', 'lessons', 'submissions', 'catalogs', 'variants', 'attempts']);
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 function allDocs(coll) { return Q.list.all(coll).map(r => ({ id: r.id, data: JSON.parse(r.data), updated: r.updated })); }
 function getDoc(coll, id) { const r = Q.get.get(coll, id); return r ? JSON.parse(r.data) : null; }
@@ -226,6 +226,47 @@ function metricsFor(lessons, sid) {
   }
   return { att: (y + n) ? y / (y + n) * 100 : null, hw: hn ? hs / hn * 100 : null, ok: on ? ok / on * 100 : null };
 }
+/* ---------- варианты: проверка ответов ---------- */
+function normAnswer(v) {
+  return String(v == null ? '' : v).trim().toLowerCase()
+    .replace(/\s+/g, '').replace(/,/g, '.').replace(/−|–|—/g, '-').replace(/^\+/, '').replace(/ё/g, 'е');
+}
+function sameAnswer(given, key) {
+  const g = normAnswer(given);
+  if (!g) return false;
+  return String(key == null ? '' : key).split('|').some(k => {
+    const n = normAnswer(k);
+    if (!n) return false;
+    if (g === n) return true;
+    const a = Number(g), b = Number(n);
+    return g !== '' && n !== '' && !isNaN(a) && !isNaN(b) && Math.abs(a - b) < 1e-9;
+  });
+}
+function variantFor(vid, gids) {
+  const v = ID_RE.test(vid) ? getDoc('variants', vid) : null;
+  if (!v || !(v.groups || []).some(id => gids.has(id))) return null;
+  return v;
+}
+function attemptsPublic(a, v) {
+  if (!a || !a.attempts || !a.attempts.length) return null;
+  const n = (v.part1 || []).length;
+  const scores = a.attempts.map(x => (x.correct || []).length);
+  const last = a.attempts[a.attempts.length - 1];
+  const wrong = {};
+  a.attempts.forEach(x => Object.keys(x.answers || {}).forEach(k => { if (!(x.correct || []).includes(k)) wrong[k] = (wrong[k] || 0) + 1; }));
+  return { count: a.attempts.length, first: scores[0], best: Math.max.apply(null, scores), total: n,
+    last: { at: last.at, answers: last.answers || {}, correct: last.correct || [] }, wrong, revealed: a.revealed || {} };
+}
+function publicVariant(id, v, sid) {
+  const strip = t => ({ n: String(t.n), files: t.files || [] });
+  return {
+    id, title: v.title || 'Вариант', order: v.order || 0,
+    part1: (v.part1 || []).map(strip), part2: (v.part2 || []).map(strip),
+    result: attemptsPublic(getDoc('attempts', (id + '_' + sid).slice(0, 64)), v),
+    sub: publicSub(getDoc('submissions', subId('var-' + id, sid))),
+  };
+}
+
 function subId(lessonId, sid) { return (lessonId + '_' + sid).slice(0, 64); }
 function publicSub(d) {
   if (!d) return null;
@@ -256,8 +297,51 @@ async function studentApi(req, res, tok, action) {
     return json(res, 200, { id: f.id, url: f.url, name: name.slice(0, 200), type: f.contentType, size: f.sizeBytes });
   }
   const body = await readJson(req);
+  if (action === 'check') {
+    const vid = String(body.variantId || '');
+    const v = variantFor(vid, ctx.gids);
+    if (!v) return json(res, 404, { error: 'Вариант не найден.' });
+    const aid = (vid + '_' + sid).slice(0, 64);
+    const doc = getDoc('attempts', aid) || { variantId: vid, studentId: sid, attempts: [] };
+    const clientId = String(body.clientId || '').slice(0, 64);
+    let att = clientId && doc.attempts.find(x => x.clientId === clientId);
+    if (!att) {
+      const answers = {}, correct = [];
+      (v.part1 || []).forEach(t => {
+        const n = String(t.n), val = body.answers && body.answers[n];
+        if (val == null || String(val).trim() === '') return;
+        answers[n] = String(val).slice(0, 100);
+        if (sameAnswer(val, t.answer)) correct.push(n);
+      });
+      if (!Object.keys(answers).length) return json(res, 400, { error: 'Впишите хотя бы один ответ.' });
+      att = { at: Date.now(), answers, correct, clientId };
+      doc.attempts.push(att);
+      if (doc.attempts.length > 200) doc.attempts = doc.attempts.slice(-200);
+      doc.updated = att.at;
+      putDoc('attempts', aid, doc);
+    }
+    return json(res, 200, { correct: att.correct, answered: Object.keys(att.answers), result: attemptsPublic(doc, v) });
+  }
+  if (action === 'reveal') {
+    const vid = String(body.variantId || ''), n = String(body.n || '');
+    const v = variantFor(vid, ctx.gids);
+    if (!v) return json(res, 404, { error: 'Вариант не найден.' });
+    const t = (v.part1 || []).find(x => String(x.n) === n);
+    const aid = (vid + '_' + sid).slice(0, 64);
+    const doc = getDoc('attempts', aid);
+    const pub = doc && attemptsPublic(doc, v);
+    if (!t || !pub || (pub.wrong[n] || 0) < 3) return json(res, 403, { error: 'Ответ откроется после трёх неверных попыток.' });
+    const ans = String(t.answer || '').split('|')[0];
+    doc.revealed = doc.revealed || {}; doc.revealed[n] = ans; doc.updated = Date.now();
+    putDoc('attempts', aid, doc);
+    return json(res, 200, { answer: ans, result: attemptsPublic(doc, v) });
+  }
   const lessonId = String(body.lessonId || '');
-  const lesson = ID_RE.test(lessonId) ? getDoc('lessons', lessonId) : null;
+  let lesson = null;
+  if (lessonId.startsWith('var-')) {
+    const v = variantFor(lessonId.slice(4), ctx.gids);
+    if (v) lesson = { groupId: (v.groups || []).find(id => ctx.gids.has(id)), variant: true };
+  } else if (ID_RE.test(lessonId)) lesson = getDoc('lessons', lessonId);
   if (!lesson || !ctx.gids.has(lesson.groupId)) return json(res, 404, { error: 'Занятие не найдено.' });
   const id = subId(lessonId, sid);
   const cur = getDoc('submissions', id) || { lessonId, studentId: sid, groupId: lesson.groupId, files: [], comment: '', created: Date.now() };
@@ -323,6 +407,10 @@ function studentPayload(tok) {
   return {
     student: { id: sid, name: me.name },
     groups: groups.map(g => ({ id: g.id, name: g.data.name })),
+    variants: allDocs('variants')
+      .filter(v => (v.data.groups || []).some(id => gids.has(id)))
+      .map(v => publicVariant(v.id, v.data, sid))
+      .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title, 'ru', { numeric: true })),
     catalogs: allDocs('catalogs')
       .filter(c => (c.data.groups || []).some(id => gids.has(id)))
       .sort((a, b) => (a.data.order || 0) - (b.data.order || 0))
@@ -388,6 +476,37 @@ function importArchive(buf) {
   return { groups: (data.groups || []).length, lessons: (data.lessons || []).length, files: nf };
 }
 
+/* ---------- загрузка вариантов из архива ---------- */
+// В архиве одна или несколько папок, в каждой variant.json и картинки заданий:
+// {"title":"Вариант 1","part1":[{"n":"1","images":["01.png"],"answer":"12"}],"part2":[{"n":"13","images":["13.png"]}]}
+function importVariants(buf) {
+  const z = readZip(buf);
+  const metas = z.names.filter(n => /(^|\/)variant\.json$/.test(n));
+  if (!metas.length) throw Object.assign(new Error('В архиве нет variant.json.'), { status: 400 });
+  const out = [];
+  const existing = allDocs('variants').length;
+  metas.forEach((mp, k) => {
+    const dir = mp.slice(0, mp.length - 'variant.json'.length);
+    const spec = JSON.parse(z.read(mp).toString('utf8'));
+    const conv = (t) => ({
+      n: String(t.n), answer: t.answer == null ? undefined : String(t.answer),
+      files: (t.images || []).map(img => {
+        const b = z.read(dir + img);
+        if (!b) throw Object.assign(new Error('Нет файла ' + dir + img), { status: 400 });
+        const mime = /\.png$/i.test(img) ? 'image/png' : /\.webp$/i.test(img) ? 'image/webp' : 'image/jpeg';
+        const f = storeFile(b, img, mime);
+        return { id: f.id, url: f.url, type: mime, name: img };
+      }),
+    });
+    const id = crypto.randomBytes(10).toString('hex');
+    const doc = { title: String(spec.title || ('Вариант ' + (existing + k + 1))), order: existing + k, groups: [],
+      source: String(spec.source || ''), part1: (spec.part1 || []).map(conv), part2: (spec.part2 || []).map(conv), created: Date.now() };
+    putDoc('variants', id, doc);
+    out.push({ id, title: doc.title, part1: doc.part1.length, part2: doc.part2.length });
+  });
+  return { variants: out };
+}
+
 /* ---------- маршруты ---------- */
 async function handle(req, res) {
   const url = new URL(req.url, 'http://x');
@@ -429,7 +548,7 @@ async function handle(req, res) {
   if ((mm = /^\/_blob\/([A-Za-z0-9_-]{6,64})$/.exec(p)) && (m === 'GET' || m === 'HEAD')) {
     return serveFile(req, res, mm[1], url.searchParams.has('download'));
   }
-  if ((mm = /^\/api\/s\/([A-Za-z0-9_-]{10,64})\/(upload|submit|remove)$/.exec(p)) && m === 'POST') {
+  if ((mm = /^\/api\/s\/([A-Za-z0-9_-]{10,64})\/(upload|submit|remove|check|reveal)$/.exec(p)) && m === 'POST') {
     return studentApi(req, res, mm[1], mm[2]);
   }
   if ((mm = /^\/api\/s\/([A-Za-z0-9_-]{10,64})$/.exec(p)) && m === 'GET') {
@@ -480,6 +599,10 @@ async function handle(req, res) {
     }
     if ((mm = /^\/api\/links\/([A-Za-z0-9_-]{1,64})$/.exec(p)) && m === 'POST') {
       return json(res, 200, { token: ensureLink(mm[1], url.searchParams.has('new')) });
+    }
+    if (p === '/api/variants/import' && m === 'POST') {
+      const buf = await readBody(req, 300 * 1024 * 1024);
+      return json(res, 200, importVariants(buf));
     }
     if (p === '/api/import' && m === 'POST') {
       const buf = await readBody(req, 1024 * 1024 * 1024);
