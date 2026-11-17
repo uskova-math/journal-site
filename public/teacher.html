@@ -1343,7 +1343,18 @@ document.addEventListener("input",function(e){
     else if(t.dataset.sname){var g=gFind(t.dataset.g);g.students.forEach(function(s){if(s.id===t.dataset.sname)s.name=t.value;});}
   }
 });
-document.addEventListener("change",function(e){
+// Окно выбора файла может быть открыто дольше 20 секунд; за это время журнал обновляет страницу
+// и кнопка выбора файла пересоздаётся. Тогда событие с файлами приходит на «старую» кнопку,
+// которой уже нет на странице, — ловим его прямо на ней.
+document.addEventListener("click",function(e){
+  var el=e.target;
+  if(el&&el.tagName==="INPUT"&&el.type==="file"&&!el._detachedHook){
+    el._detachedHook=true;
+    el.addEventListener("change",function(){if(!document.contains(el))onDocChange({target:el});});
+  }
+},true);
+document.addEventListener("change",onDocChange);
+function onDocChange(e){
   if(S.mode==="catalog"&&catChange(e.target))return;
   if(S.mode==="variants"&&vtChange(e.target))return;
   var t=e.target;
@@ -1365,7 +1376,7 @@ document.addEventListener("change",function(e){
   else if(t.id==="m-date"){M.date=t.value;}
   else if(t.id==="m-upload"&&t.files&&t.files.length){M.target="hw";uploadFiles(t.files,"hw");t.value="";}
   else if(t.id==="m-upload-b"&&t.files&&t.files.length){M.target="board";uploadFiles(t.files,"board");t.value="";}
-});
+}
 function pastedName(type,n){
   var d=new Date(), ex=(EXT_BY_TYPE[type]||"png");
   return "Картинка "+pad(d.getDate())+"."+pad(d.getMonth()+1)+" "+pad(d.getHours())+"-"+pad(d.getMinutes())+(n>0?" ("+(n+1)+")":"")+"."+ex;
@@ -1623,7 +1634,10 @@ var CAT_TPL={
   oge:{name:"ОГЭ",tasks:[["1–5","Практические задачи (квартира, участок, шины и т. п.)"],["6","Вычисления: дроби"],["7","Числа на прямой"],["8","Степени и корни"],["9","Уравнения"],["10","Теория вероятностей"],["11","Графики функций"],["12","Расчёты по формулам"],["13","Неравенства"],["14","Прогрессии и последовательности"],["15","Треугольники"],["16","Окружность"],["17","Четырёхугольники"],["18","Фигуры на клетчатой бумаге"],["19","Верные и неверные утверждения"],["20","Алгебраические выражения, уравнения, системы"],["21","Текстовая задача"],["22","Построение графика функции"],["23","Геометрическая задача на вычисление"],["24","Геометрическая задача на доказательство"],["25","Геометрическая задача повышенной сложности"]]},
   ege:{name:"ЕГЭ профиль",tasks:[["1","Планиметрия"],["2","Векторы"],["3","Стереометрия"],["4","Простая вероятность"],["5","Сложная вероятность"],["6","Простейшие уравнения"],["7","Значение выражения"],["8","Производная и первообразная"],["9","Задачи с прикладным содержанием"],["10","Текстовые задачи"],["11","Графики функций"],["12","Исследование функции (производная)"],["13","Тригонометрическое уравнение"],["14","Стереометрия"],["15","Неравенства"],["16","Экономика"],["17","Планиметрия"],["18","Параметры"],["19","Числа и их свойства"]]}
 };
-var CT={cur:null,open:{},form:null,saveT:{}}; // открытый каталог, раскрытые задания, открытая форма ссылки
+var CT={cur:null,open:{},form:null,saveT:{},up:{}};
+function catUpStatus(tid){var u=CT.up[tid];if(!u)return "";
+  var h=u.finished?(u.errs.length?'Прикреплено '+(u.total-u.errs.length)+' из '+u.total+'. Не получилось: '+esc(u.errs.join('; '))+'. <button class="link" data-action="cat-up-ok" data-t="'+esc(tid)+'">Понятно</button>':'Готово, прикреплено: '+u.total+'.'):'Загружаю '+(u.done+1)+' из '+u.total+'…';
+  return '<p class="pg-msg" role="status" style="margin-top:6px">'+h+'</p>';} // открытый каталог, раскрытые задания, открытая форма ссылки
 function catById(id){for(var i=0;i<S.cats.length;i++)if(S.cats[i].id===id)return S.cats[i];return null;}
 function catTaskNums(n){var m=String(n||"").match(/\d+/g);if(!m)return [];var a=m.map(Number);if(/[–-]/.test(n)&&a.length===2&&a[1]>a[0]&&a[1]-a[0]<30){var r=[];for(var i=a[0];i<=a[1];i++)r.push(i);return r;}return a;}
 function topicNums(t){var out=[],re=/№\s*(\d+)(?:\s*[–-]\s*(\d+))?/g,m;while((m=re.exec(String(t||"")))){var a=+m[1],b=m[2]?+m[2]:a;for(var i=a;i<=Math.min(b,a+30);i++)out.push(i);}return out;}
@@ -1688,7 +1702,7 @@ function renderCatTask(cat,t,ti){
       return '<span class="cat-item">'+(m.url&&m.kind==="link"?'<a href="'+esc(m.url)+'" target="_blank" rel="noopener noreferrer">'+esc(m.name||m.url)+'</a>':'<button class="link" data-action="cat-open-file" data-t="'+esc(t.id)+'" data-i="'+k+'">'+esc(m.name)+'</button>')+
         '<button class="x" data-action="cat-item-del" data-t="'+esc(t.id)+'" data-w="materials" data-i="'+k+'" aria-label="Убрать">×</button></span>';}).join("")+'</div>':'<p class="hint">Пока пусто.</p>')+
     '<div class="cat-btns">'+(S.assets?'<label class="btn ghost" for="cf-'+t.id+'" style="cursor:pointer">Прикрепить файл</label><input type="file" id="cf-'+t.id+'" data-catfile="'+esc(t.id)+'" multiple accept="image/*,application/pdf,.pdf" hidden>':'')+
-    '<button class="btn ghost" data-action="cat-form" data-t="'+esc(t.id)+'" data-w="materials">Добавить ссылку</button></div>'+catForm(t,"materials")+'</div>';
+    '<button class="btn ghost" data-action="cat-form" data-t="'+esc(t.id)+'" data-w="materials">Добавить ссылку</button></div>'+catUpStatus(t.id)+catForm(t,"materials")+'</div>';
   // тренировка
   h+='<div class="cat-sec"><div class="label">Потренироваться</div>'+(prs.length?'<div class="cat-items">'+prs.map(function(m,k){
       return '<span class="cat-item"><a href="'+esc(m.url)+'" target="_blank" rel="noopener noreferrer">'+esc(m.name||m.url)+'</a><button class="x" data-action="cat-item-del" data-t="'+esc(t.id)+'" data-w="practice" data-i="'+k+'" aria-label="Убрать">×</button></span>';}).join("")+'</div>':'<p class="hint">Добавьте ссылки на задания с автопроверкой.</p>')+
@@ -1718,6 +1732,7 @@ function catAction(a,d,b){
     case "cat-new-close": CT.newOpen=false; render(); return true;
     case "cat-create": CT.newOpen=false; newCatalog(d.k); return true;
     case "cat-toggle": CT.open[d.t]=!CT.open[d.t]; render(); return true;
+    case "cat-up-ok": delete CT.up[d.t]; render(); return true;
     case "cat-task-add": {var nt={id:rid(),n:"",title:"",materials:[],practice:[]};cat.tasks=(cat.tasks||[]).concat([nt]);CT.open[nt.id]=true;saveCat(cat);render();
       var el=document.getElementById("tn-"+nt.id);if(el){el.focus();el.scrollIntoView({block:"center"});}return true;}
     case "cat-task-del": cat.tasks=cat.tasks.filter(function(x){return x.id!==d.t;});
@@ -1751,13 +1766,22 @@ function catChange(tg){
   var cat=catById(CT.cur); if(!cat)return false;
   if(tg.dataset.catg){var gs=(cat.groups||[]).filter(function(x){return x!==tg.dataset.catg;});if(tg.checked)gs.push(tg.dataset.catg);cat.groups=gs;saveCat(cat);render();return true;}
   if(tg.dataset.catfile&&tg.files&&tg.files.length){
-    var t=catTask(cat,tg.dataset.catfile), list=Array.prototype.slice.call(tg.files); tg.value="";
-    list.forEach(function(file){
+    var catId=cat.id, tid=tg.dataset.catfile, list=Array.prototype.slice.call(tg.files); tg.value="";
+    var st=CT.up[tid]={total:list.length,done:0,errs:[]}; render();
+    (function next(k){
+      if(k>=list.length){
+        st.finished=true; render();
+        if(!st.errs.length)setTimeout(function(){if(CT.up[tid]===st){delete CT.up[tid];render();}},4000);
+        return;
+      }
+      var file=list[k];
+      if(file.size>25*1048576){st.errs.push("«"+file.name+"» — больше 25 МБ");st.done++;render();return next(k+1);}
       S.assets.upload(file).then(function(r){
-        t.materials=(t.materials||[]).concat([{kind:"file",id:r.id,url:r.url||("/_blob/"+r.id),name:file.name,type:r.contentType||file.type}]);
-        saveCat(cat); render();
-      },function(){S.notice="Не получилось загрузить «"+file.name+"». Подходят PDF и картинки до 20 МБ.";render();});
-    });
+        var c=catById(catId), t=c&&catTask(c,tid);   // берём свежие данные: страница могла обновиться
+        if(t){t.materials=(t.materials||[]).concat([{kind:"file",id:r.id,url:r.url||("/_blob/"+r.id),name:file.name,type:r.contentType||file.type}]);saveCat(c);}
+        st.done++; render(); next(k+1);
+      },function(e){st.errs.push("«"+file.name+"» — "+(e&&e.message||"ошибка"));st.done++;render();next(k+1);});
+    })(0);
     return true;
   }
   return false;
