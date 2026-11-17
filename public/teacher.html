@@ -484,7 +484,9 @@ function render(){
   }
   var g=curGroup(), lsAll=groupLessons(g.id), td=today();
   var fut=lsAll.filter(function(l){return l.date>td;}), nextL=fut.length?fut[fut.length-1]:null; // ближайшее будущее занятие
-  var lsPast=lsAll.filter(function(l){return l.date<=td;}), ls=(nextL?[nextL]:[]).concat(lsPast);
+  // будущие занятия, к которым уже записана домашка, показываем все, а не только ближайшее
+  var futShow=fut.filter(function(l){return l===nextL||hasHwContent(l);});
+  var lsPast=lsAll.filter(function(l){return l.date<=td;}), ls=futShow.concat(lsPast);
   var nFuture=lsAll.length-ls.length;
   h+='<nav class="tabs" aria-label="Группы">'+S.groups.map(function(x){
     return '<button class="tab" data-action="tab" data-g="'+esc(x.id)+'" aria-pressed="'+(x.id===g.id)+'">'+esc(x.name||"Без названия")+'<span class="n">· '+(x.students||[]).length+' уч.</span></button>';
@@ -492,7 +494,7 @@ function render(){
   if((g.students||[]).some(function(s){return /^Ученик \d+$/.test(s.name);})&&S.canWrite)
     h+='<div class="hint-box">Впишите настоящие имена: кнопка «Группы и ученики» справа вверху.</div>';
   h+=renderNewWorks(g);
-  h+=renderDebts(g,lsPast);
+  h+=renderDebts(g,lsPast,fut.filter(hasHwContent));
   h+='<div class="toolbar"><div class="seg" role="group" aria-label="Вид">'+
      '<button data-action="view" data-v="list" aria-pressed="'+(S.view==="list")+'">Занятия</button>'+
      '<button data-action="view" data-v="table" aria-pressed="'+(S.view==="table")+'">Таблица</button>'+
@@ -624,8 +626,9 @@ function planSave(){
   render();
 }
 
-function renderDebts(g,ls){
-  var withHw=ls.filter(function(l){return !l.noHw;});
+function hasHwContent(l){return !l.noHw&&(!!String(l.hw||"").trim()||!!(l.files&&l.files.length));}
+function renderDebts(g,ls,futHw){
+  var withHw=(futHw||[]).concat(ls.filter(function(l){return !l.noHw;}));
   var h='<section class="panel" aria-labelledby="debts-t"><div class="debts-head"><h2 id="debts-t">Кто что не сдал</h2>';
   if(!withHw.length){return h+'</div><p class="muted" style="margin:0">Когда появятся занятия с домашкой, здесь будет видно, от кого её ждать.</p></section>';}
   var rows=(g.students||[]).map(function(s){
