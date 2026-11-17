@@ -271,7 +271,7 @@ var UP={}; // идёт загрузка: lessonId -> текст
 function fbBlock(fb){
   return '<div class="fb"><div class="label">Ответ преподавателя · '+esc(fTime.format(new Date(fb.at)))+'</div>'+
     (fb.text?'<p class="fb-text">'+linkify(fb.text)+'</p>':'')+files(fb.files)+
-    (fb.audio?'<div class="fb-audio"><span class="hint">Голосовое'+(fb.audio.dur?' · '+Math.floor(fb.audio.dur/60)+':'+String(fb.audio.dur%60).padStart(2,"0"):'')+'</span><audio controls preload="metadata" src="'+esc(fb.audio.url||("/_blob/"+fb.audio.id))+'"></audio></div>':'')+'</div>';
+    (fb.audio?'<div class="fb-audio"><span class="hint">Голосовое сообщение</span><audio controls preload="metadata" src="'+esc(fb.audio.url||("/_blob/"+fb.audio.id))+'"></audio></div>':'')+'</div>';
 }
 function subBlock(l){
   if(l.noHw)return "";
