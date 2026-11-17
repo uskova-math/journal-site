@@ -253,8 +253,8 @@ function rec(l){
     (l.board&&l.board.length?'<div class="rec-sub">Записи с доски</div>'+files(l.board):"")+'</div>';
 }
 function hwBlock(l){
-  if(l.noHw)return '<div class="hw"><p class="hw-text muted">Домашку не задавали</p></div>';
-  return '<div class="hw"><div class="label">Домашнее задание'+(l.count?" · "+l.count+" "+plural(l.count,"номер","номера","номеров"):"")+'</div>'+
+  if(l.noHw)return '<div class="hw"><p class="hw-text muted">К этому занятию домашки не было</p></div>';
+  return '<div class="hw"><div class="label">Домашка к этому занятию'+(l.count?" · "+l.count+" "+plural(l.count,"номер","номера","номеров"):"")+'</div>'+
     (l.hw?'<p class="hw-text">'+linkify(l.hw)+'</p>':(l.files&&l.files.length?"":'<p class="hw-text muted">Текст задания не записан</p>'))+files(l.files)+'</div>';
 }
 function lessonCard(l){
@@ -337,6 +337,7 @@ function sendFiles(lid,list,prepared){
   }).then(function(r){var l=findL(lid);if(l)l.sub=r.sub;delete UP[lid];keepScroll(render);if(failed)showErr(lid,"Часть файлов не загрузилась: "+failed);},
     function(e){delete UP[lid];keepScroll(render);showErr(lid,e.message);});
 }
+function addDaysS(iso,n){var d=parseD(iso);d.setDate(d.getDate()+n);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 function nextLessonAfter(l){
   var later=D.lessons.filter(function(x){return x.groupId===l.groupId&&x.date>l.date;});
   return later.length?later[later.length-1]:null;
@@ -344,25 +345,23 @@ function nextLessonAfter(l){
 
 /* ---------- экраны ---------- */
 function renderHome(){
+  // Домашка записана в то занятие, к которому её нужно сдать.
   var td=today(), withHw=D.lessons.filter(function(l){return !l.noHw;});
-  var cur=withHw.filter(function(l){return l.date<=td;})[0]||withHw[withHw.length-1];
-  // домашка, уже записанная к будущим занятиям, — тоже наверху, от поздней к ранней
-  var fut=withHw.filter(function(l){return l.date>td&&l!==cur&&(String(l.hw||"").trim()||(l.files&&l.files.length))&&hwState(l)!=="done";});
-  var items=fut.concat(cur?[cur]:[]);
-  var h="";
-  if(items.length){
-    h+='<section class="panel home-hw"><h2>Домашка</h2>'+items.map(function(l,k){
-      var nx=nextLessonAfter(l), st=hwState(l);
-      return '<div class="hw-item'+(k?' more':'')+'"><div class="due">Задано '+esc(fmtDay(l.date))+(nx?", сдать к "+esc(fmtDay(nx.date)):", сдать к следующему занятию")+
-        (l.topic?" · "+esc(l.topic):"")+'</div>'+
+  var hasHw=function(l){return !!String(l.hw||"").trim()||!!(l.files&&l.files.length);};
+  var items=withHw.filter(function(l){return l.date>=td&&hasHw(l);}).reverse(); // ближайший срок первым
+  var tmr=addDaysS(td,1);
+  var h='<section class="panel home-hw"><h2>Домашка</h2>';
+  h+=items.length?items.map(function(l,k){
+      var st=hwState(l), when=l.date===td?" (сегодня)":l.date===tmr?" (завтра)":"";
+      return '<div class="hw-item'+(k?' more':'')+'"><div class="due">Сдать к <b>'+esc(fmtLong(l.date))+'</b>'+when+'</div>'+
         '<div class="chips" style="margin-bottom:10px"><span class="chip '+st+'">'+hwLabel(l)+'</span>'+scoreChip(l)+'</div>'+solvedRow(l)+
         (l.hw?'<p class="hw-text">'+linkify(l.hw)+'</p>':"")+files(l.files)+subBlock(l)+'</div>';
-    }).join("")+'</section>';
-  }
-  var debts=withHw.filter(function(l){return l!==cur&&hwState(l)!=="done"&&l.date<=td;});
+    }).join(""):'<p class="empty" style="margin:0">К следующим занятиям домашки пока нет.</p>';
+  h+='</section>';
+  var debts=withHw.filter(function(l){return l.date<td&&hwState(l)!=="done";});
   h+='<section class="panel"><h2>Не сдано</h2>'+(debts.length?'<div class="chips">'+debts.map(function(l){
       var st=hwState(l), sent=st==="wait"&&l.sub&&l.sub.files&&l.sub.files.length;
-      return '<a class="chip '+(sent?"star":st)+'" href="#l-'+esc(l.id)+'">'+fmtDay(l.date)+' · '+(sent?"отправлено, на проверке":st==="part"?"частично":st==="none"?"не сдано":"ждём")+'</a>';}).join("")+'</div>'+
+      return '<a class="chip '+(sent?"star":st)+'" href="#l-'+esc(l.id)+'">к '+fmtDay(l.date)+' · '+(sent?"отправлено, на проверке":st==="part"?"частично":st==="none"?"не сдано":"ждём")+'</a>';}).join("")+'</div>'+
       '<p class="hint" style="margin-top:8px">Нажмите на дату, чтобы открыть занятие и задание.</p>'
     :'<p class="empty" style="margin:0">Долгов нет. Так держать!</p>')+'</section>';
   var last=D.lessons.filter(function(l){return l.date<=td;})[0];

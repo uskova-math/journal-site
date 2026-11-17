@@ -805,9 +805,9 @@ function renderLesson(l,g){
     (l.topic?'<div class="l-topic">'+esc(l.topic)+'</div>':'')+'<div class="l-meta">'+meta+'</div></div>'+
     (S.canWrite?'<button class="btn ghost" data-action="edit" data-l="'+esc(l.id)+'">Изменить</button>':'')+'</div>';
   h+=renderRec(l);
-  if(l.noHw){h+='<div class="hw"><p class="hw-text muted">Домашку не задавали</p></div>';}
+  if(l.noHw){h+='<div class="hw"><p class="hw-text muted">Домашки к этому занятию не было</p></div>';}
   else{
-    h+='<div class="hw"><div class="label">Домашнее задание</div>'+
+    h+='<div class="hw"><div class="label">Домашка к этому занятию</div>'+
       (l.hw?'<p class="hw-text">'+esc(l.hw)+'</p>':'<p class="hw-text muted">Текст задания не записан</p>')+
       renderFiles(l.files,l.id)+'</div>';
   }
@@ -1039,10 +1039,10 @@ function openLesson(lid){
       '<div class="field"><span class="flabel">Записи с доски</span><div class="m-files" id="m-board"></div>'+
       (S.assets?'<div><label class="btn ghost" for="m-upload-b" style="cursor:pointer">Прикрепить запись с доски</label><input type="file" id="m-upload-b" multiple accept="image/*,application/pdf,.pdf" hidden></div>':'')+
       '</div></div>'+
-    '<div class="m-sec-t" style="margin-top:4px">Домашнее задание</div>'+
-    '<label class="check"><input type="checkbox" id="m-nohw"> Домашку не задавала</label>'+
+    '<div class="m-sec-t" style="margin-top:4px">Домашка к этому занятию</div>'+
+    '<label class="check"><input type="checkbox" id="m-nohw"> К этому занятию домашки нет</label>'+
     '<div id="m-hwwrap" class="field" style="gap:10px">'+
-      '<div class="field"><label for="m-hw">Что задано</label><textarea id="m-hw" placeholder="Например: №1–5 из листка «Модуль», задача про поезда"></textarea></div>'+
+      '<div class="field"><label for="m-hw">Что нужно сделать к этому занятию</label><textarea id="m-hw" placeholder="Например: №1–5 из листка «Модуль», задача про поезда"></textarea></div>'+
       '<div class="field"><label for="m-count">Сколько номеров в домашке</label><input type="number" id="m-count" min="1" max="99" inputmode="numeric" placeholder="Например, 5" style="max-width:160px">'+
       '<p class="hint">Тогда у каждого ученика можно будет отметить, какие номера засчитаны. Можно оставить пустым.</p></div>'+
       '<div class="field"><label for="m-labels">Номера задач, если они не 1, 2, 3… (необязательно)</label><input type="text" id="m-labels" placeholder="Например: 3, 4, 5, 8а">'+
