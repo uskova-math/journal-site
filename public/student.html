@@ -14,7 +14,7 @@
 .top h1{font-size:22px;margin:0}
 .top .sub{margin:2px 0 0;color:var(--muted);font-size:14px}
 .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px;position:sticky;top:8px;z-index:3}
-.tabs a{flex:1;text-align:center;padding:8px 10px;border-radius:7px;color:var(--muted);text-decoration:none;font-weight:600}
+.tabs a{flex:1;text-align:center;padding:8px 10px;border-radius:7px;color:var(--muted);font-weight:600}
 .tabs a[aria-current="page"]{background:var(--ink);color:var(--on-ink)}
 @media (max-width:600px){.tabs{gap:2px;overflow-x:auto;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}.tabs a{flex:1 0 auto;padding:8px 9px;font-size:14px;white-space:nowrap}}
 h2{font-size:16px;margin:0 0 10px}
@@ -31,6 +31,11 @@ h2{font-size:16px;margin:0 0 10px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .due{font-size:14px;color:var(--muted);margin:2px 0 10px}
 .home-hw{border-left:4px solid var(--ink)}
+.fb{margin:10px 0;padding:10px 12px;border-radius:10px;background:var(--ok-soft);border:1px solid var(--ok)}
+.fb .label{color:var(--ok)}
+.fb-text{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.fb-audio{display:flex;flex-direction:column;gap:4px;margin-top:8px}.fb-audio audio{width:100%;max-width:420px}
+.chip.fbchip{background:var(--ok-soft);border-color:var(--ok);color:var(--ok);text-decoration:none;font-weight:600}
 .hw-item.more{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}
 .files{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .file{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:4px 10px 4px 4px;color:var(--text);text-decoration:none;font-size:14px;max-width:100%;cursor:pointer;font:inherit;text-align:left}
@@ -263,6 +268,11 @@ function lessonCard(l){
 }
 var fTime=new Intl.DateTimeFormat("ru-RU",{day:"numeric",month:"long",hour:"2-digit",minute:"2-digit"});
 var UP={}; // идёт загрузка: lessonId -> текст
+function fbBlock(fb){
+  return '<div class="fb"><div class="label">Ответ преподавателя · '+esc(fTime.format(new Date(fb.at)))+'</div>'+
+    (fb.text?'<p class="fb-text">'+linkify(fb.text)+'</p>':'')+files(fb.files)+
+    (fb.audio?'<div class="fb-audio"><span class="hint">Голосовое'+(fb.audio.dur?' · '+Math.floor(fb.audio.dur/60)+':'+String(fb.audio.dur%60).padStart(2,"0"):'')+'</span><audio controls preload="metadata" src="'+esc(fb.audio.url||("/_blob/"+fb.audio.id))+'"></audio></div>':'')+'</div>';
+}
 function subBlock(l){
   if(l.noHw)return "";
   var sub=l.sub, graded=!!l.mark.hw, files=(sub&&sub.files)||[];
@@ -275,6 +285,7 @@ function subBlock(l){
     }).join("")+'</div>';
     if(sub.comment)h+='<p class="sub-c">Комментарий: '+esc(sub.comment)+'</p>';
   }
+  if(sub&&sub.fb)h+=fbBlock(sub.fb);
   if(UP[l.id])h+='<p class="sub-st" id="prog-'+esc(l.id)+'">'+esc(UP[l.id])+'</p>';
   else{
     h+='<div class="sub-act"><label class="btn" for="up-'+esc(l.id)+'">'+(files.length?'Добавить ещё фото':'Отправить решение')+'</label>'+
@@ -354,14 +365,14 @@ function renderHome(){
   h+=items.length?items.map(function(l,k){
       var st=hwState(l), when=l.date===td?" (сегодня)":l.date===tmr?" (завтра)":"";
       return '<div class="hw-item'+(k?' more':'')+'"><div class="due">Сдать к <b>'+esc(fmtLong(l.date))+'</b>'+when+'</div>'+
-        '<div class="chips" style="margin-bottom:10px"><span class="chip '+st+'">'+hwLabel(l)+'</span>'+scoreChip(l)+'</div>'+solvedRow(l)+
+        '<div class="chips" style="margin-bottom:10px"><span class="chip '+st+'">'+hwLabel(l)+'</span>'+scoreChip(l)+(l.sub&&l.sub.fb?'<span class="chip fbchip">Есть ответ преподавателя ↓</span>':'')+'</div>'+solvedRow(l)+
         (l.hw?'<p class="hw-text">'+linkify(l.hw)+'</p>':"")+files(l.files)+subBlock(l)+'</div>';
     }).join(""):'<p class="empty" style="margin:0">К следующим занятиям домашки пока нет.</p>';
   h+='</section>';
   var debts=withHw.filter(function(l){return l.date<td&&hwState(l)!=="done";});
   h+='<section class="panel"><h2>Не сдано</h2>'+(debts.length?'<div class="chips">'+debts.map(function(l){
       var st=hwState(l), sent=st==="wait"&&l.sub&&l.sub.files&&l.sub.files.length;
-      return '<a class="chip '+(sent?"star":st)+'" href="#l-'+esc(l.id)+'">к '+fmtDay(l.date)+' · '+(sent?"отправлено, на проверке":st==="part"?"частично":st==="none"?"не сдано":"ждём")+'</a>';}).join("")+'</div>'+
+      return '<a class="chip '+(sent?"star":st)+'" href="#l-'+esc(l.id)+'">к '+fmtDay(l.date)+' · '+(sent?"отправлено, на проверке":st==="part"?"частично":st==="none"?"не сдано":"ждём")+(l.sub&&l.sub.fb?" · есть ответ":"")+'</a>';}).join("")+'</div>'+
       '<p class="hint" style="margin-top:8px">Нажмите на дату, чтобы открыть занятие и задание.</p>'
     :'<p class="empty" style="margin:0">Долгов нет. Так держать!</p>')+'</section>';
   var last=D.lessons.filter(function(l){return l.date<=td;})[0];

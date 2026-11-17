@@ -328,6 +328,15 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .v-subbar #v-del{flex-basis:100%}
 .v-subbar #v-del:empty{display:none}
 .danger-link{color:var(--miss)}
+.v-fb{display:flex;flex-direction:column;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--surface)}
+.v-fb-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:15px}.v-fb-h .muted{font-size:13px}
+#fb-text{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:8px 10px;width:100%;resize:vertical;min-height:70px}
+.fb-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.fb-btns .spacer{flex:1}
+.fb-f{display:inline-flex;align-items:center;gap:2px}.fb-f .file img{width:40px;height:40px;object-fit:cover;border-radius:6px}
+.fb-rec{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px}.fb-rec audio{max-width:100%;height:36px}
+.rec-dot{width:10px;height:10px;border-radius:50%;background:var(--miss);animation:recp 1s infinite}
+@keyframes recp{50%{opacity:.3}}
+#fb-msg:empty{display:none}#fb-msg p{margin:0}
 .v-note{margin:0;padding:10px 14px;background:var(--ink-soft);white-space:pre-wrap;font-size:14px;overflow-wrap:anywhere}
 /* план */
 .plan-gen{display:flex;flex-direction:column;gap:10px}
@@ -701,7 +710,7 @@ function renderNewWorks(g){
 function subButton(l,s){
   var x=subFor(l.id,s.id); if(!x||!((x.files&&x.files.length)||x.comment))return "";
   var n=(x.files||[]).length;
-  return '<button class="sub-b'+(subUnseen(x)?' new':'')+'" data-action="sub-open" data-l="'+esc(l.id)+'" data-s="'+esc(s.id)+'">Решение'+(n?' · '+n+' '+plural(n,"файл","файла","файлов"):'')+'</button>';
+  return '<button class="sub-b'+(subUnseen(x)?' new':'')+'" data-action="sub-open" data-l="'+esc(l.id)+'" data-s="'+esc(s.id)+'">Решение'+(n?' · '+n+' '+plural(n,"файл","файла","файлов"):'')+(x.fb&&x.fb.at?' · ответ ✓':'')+'</button>';
 }
 function openSub(lid,sid){
   var x=subFor(lid,sid), l=findLesson(lid), g=curGroup(); if(!x)return;
@@ -714,6 +723,107 @@ function openSub(lid,sid){
     var now=Date.now(); x.seenAt=now; render();
     write("submissions/"+x.id,function(){return S.db.doc("submissions/"+x.id).update({seenAt:now});});
   }
+}
+
+/* ---------- ответ ученику: текст, картинки, голосовое ---------- */
+var FBD={}, REC=null;
+function fbDraft(id){
+  if(!FBD[id]){var x=subById(id), f=(x&&x.fb)||{};FBD[id]={text:f.text||"",files:(f.files||[]).slice(),audio:f.audio||null,dirty:false,msg:""};}
+  return FBD[id];
+}
+function fbHas(d){return !!(String(d.text||"").trim()||d.files.length||d.audio);}
+function fmtSec(s){s=Math.max(0,Math.round(s));return Math.floor(s/60)+":"+pad(s%60);}
+function fbPanelHtml(){
+  if(!V||!V.sub)return "";
+  var x=subById(V.sub), d=fbDraft(V.sub), sent=x&&x.fb&&x.fb.at;
+  var st=d.dirty?(sent?"есть неотправленные изменения":"не отправлено"):(sent?"отправлено "+fSubTime.format(new Date(x.fb.at)):"");
+  var canRec=!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&(window.AudioContext||window.webkitAudioContext));
+  var h='<div class="v-fb-h"><b>Ответ ученику</b>'+(st?'<span class="muted">'+esc(st)+'</span>':'')+'</div>'+
+    '<textarea id="fb-text" rows="3" placeholder="Например: №3 — потерян минус при раскрытии скобок. №5 — посмотри разбор в банке заданий.">'+esc(d.text)+'</textarea>';
+  if(d.files.length)h+='<div class="files">'+d.files.map(function(f,i){var img=/^image\//.test(f.type||"");
+      return '<span class="fb-f"><a class="file" href="'+esc(fileUrl(f))+'" target="_blank" rel="noopener">'+(img?'<img src="'+esc(fileUrl(f))+'" alt="">':'<span class="ext">'+esc(extOf(f.name))+'</span>')+'<span class="fname">'+esc(f.name)+'</span></a>'+
+        '<button class="x" data-action="fb-rm" data-i="'+i+'" aria-label="Убрать" title="Убрать">×</button></span>';}).join("")+'</div>';
+  if(REC&&REC.sub===V.sub)h+='<div class="fb-rec"><span class="rec-dot" aria-hidden="true"></span>Идёт запись <span id="fb-rec-t">'+fmtSec((Date.now()-REC.t0)/1000)+'</span><button class="btn" data-action="fb-rec-stop">Остановить</button></div>';
+  else if(d.audio)h+='<div class="fb-rec"><audio controls preload="metadata" src="'+esc(fileUrl(d.audio))+'"></audio><button class="link danger-link" data-action="fb-audio-rm">Удалить голосовое</button></div>';
+  h+='<div class="fb-btns"><label class="btn ghost" for="fb-file" style="cursor:pointer">Прикрепить картинку</label><input type="file" id="fb-file" multiple accept="image/*,application/pdf,.pdf" hidden>'+
+    (!d.audio&&!REC&&canRec?'<button class="btn ghost" data-action="fb-rec">Записать голосовое</button>':'')+
+    '<span class="spacer"></span><button class="btn" data-action="fb-send"'+(REC?' disabled':'')+'>Отправить ученику</button></div>'+
+    '<p class="hint" style="margin:0">Скриншот с пометками можно вставить сюда через Ctrl+V (на Mac — ⌘+V).</p>'+
+    '<div id="fb-msg">'+(d.msg||'')+'</div>';
+  return h;
+}
+function fbRefresh(){var box=$("#v-fb");if(box)box.innerHTML=fbPanelHtml();}
+function fbSay(html){if(V&&V.sub){fbDraft(V.sub).msg=html;}var m=$("#fb-msg");if(m)m.innerHTML=html;}
+function fbUpload(list){
+  if(!V||!V.sub||!S.assets)return;
+  var id=V.sub, d=fbDraft(id), files=Array.prototype.slice.call(list), n=0;
+  fbSay('<p class="hint">Загружаю…</p>');
+  (function next(k){
+    if(k>=files.length){fbSay(n<files.length?'<p class="err">Не все файлы загрузились. Подходят картинки и PDF до 25 МБ.</p>':'');if(V&&V.sub===id)fbRefresh();return;}
+    var f=files[k]; if(/^image\//.test(f.type)&&(!f.name||/^image\.\w+$/i.test(f.name)))f=new File([f],pastedName(f.type,k),{type:f.type});
+    S.assets.upload(f).then(function(r){d.files.push({id:r.id,url:r.url||("/_blob/"+r.id),name:f.name,type:r.contentType||f.type});d.dirty=true;n++;next(k+1);},function(){next(k+1);});
+  })(0);
+}
+function fbSend(){
+  var id=V&&V.sub, x=subById(id), d=fbDraft(id); if(!x)return;
+  var fb=fbHas(d)?{text:String(d.text||"").trim(),files:d.files,audio:d.audio,at:Date.now()}:null;
+  x.fb=fb; d.dirty=false; d.msg=fb?'<p class="pg-msg">Отправлено. Ученик увидит ответ под своим решением.</p>':'<p class="pg-msg">Ответ убран.</p>';
+  write("submissions/"+id,function(){return S.db.doc("submissions/"+id).update({fb:fb});});
+  if(V&&V.closeAsk){V.closeAsk=false;}
+  fbRefresh(); render();
+}
+function closeViewer(force){
+  if(V&&V.sub&&!force){
+    var d=FBD[V.sub];
+    if(REC&&REC.sub===V.sub){recStop(true);}
+    if(d&&d.dirty){
+      V.closeAsk=true;
+      fbSay('<div class="confirm">Ответ ученику ещё не отправлен.<button class="btn" data-action="fb-send">Отправить</button><button class="link" data-action="fb-discard">Закрыть без отправки</button></div>');
+      var m=$("#fb-msg"); if(m)m.scrollIntoView({block:"nearest"});
+      return;
+    }
+  }
+  if(REC)recStop(true);
+  V=null; renderViewer();
+}
+/* запись голоса в WAV 16 кГц моно: такой файл играет на любом телефоне */
+function recStart(){
+  var id=V&&V.sub; if(!id||REC)return;
+  var AC=window.AudioContext||window.webkitAudioContext, ctx;
+  try{ctx=new AC();}catch(e){fbSay('<p class="err">Этот браузер не умеет записывать звук.</p>');return;}
+  navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}}).then(function(stream){
+    if(ctx.state==="suspended")ctx.resume();
+    var src=ctx.createMediaStreamSource(stream), proc=ctx.createScriptProcessor(4096,1,1), mute=ctx.createGain(), chunks=[];
+    mute.gain.value=0;
+    proc.onaudioprocess=function(e){chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));};
+    src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+    REC={sub:id,stream:stream,ctx:ctx,src:src,proc:proc,chunks:chunks,rate:ctx.sampleRate,t0:Date.now(),
+      timer:setInterval(function(){var t=$("#fb-rec-t");var s=(Date.now()-REC.t0)/1000;if(t)t.textContent=fmtSec(s);if(s>=300)recStop();},500)};
+    fbSay(''); fbRefresh();
+  },function(){try{ctx.close();}catch(e){}fbSay('<p class="err">Нет доступа к микрофону. Разрешите микрофон для этого сайта в настройках браузера.</p>');});
+}
+function recStop(discard){
+  var r=REC; if(!r)return; REC=null; clearInterval(r.timer);
+  try{r.src.disconnect();r.proc.disconnect();}catch(e){}
+  r.stream.getTracks().forEach(function(t){t.stop();});
+  try{r.ctx.close();}catch(e){}
+  if(discard){fbRefresh();return;}
+  var len=r.chunks.reduce(function(a,c){return a+c.length;},0);
+  if(len<r.rate*0.5){fbSay('<p class="hint">Запись слишком короткая.</p>');fbRefresh();return;}
+  var all=new Float32Array(len),o=0; r.chunks.forEach(function(c){all.set(c,o);o+=c.length;});
+  var rate=16000, ratio=r.rate/rate, n=Math.floor(len/ratio), pcm=new Int16Array(n);
+  for(var i=0;i<n;i++){var a=Math.floor(i*ratio),b=Math.min(len,Math.floor((i+1)*ratio)),s=0;for(var j=a;j<b;j++)s+=all[j];var v=b>a?s/(b-a):0;v=Math.max(-1,Math.min(1,v));pcm[i]=v<0?v*0x8000:v*0x7fff;}
+  var buf=new ArrayBuffer(44+pcm.length*2), dv=new DataView(buf);
+  function str(off,t){for(var k=0;k<t.length;k++)dv.setUint8(off+k,t.charCodeAt(k));}
+  str(0,"RIFF");dv.setUint32(4,36+pcm.length*2,true);str(8,"WAVE");str(12,"fmt ");dv.setUint32(16,16,true);dv.setUint16(20,1,true);dv.setUint16(22,1,true);
+  dv.setUint32(24,rate,true);dv.setUint32(28,rate*2,true);dv.setUint16(32,2,true);dv.setUint16(34,16,true);str(36,"data");dv.setUint32(40,pcm.length*2,true);
+  new Int16Array(buf,44).set(pcm);
+  var dur=Math.round(n/rate), file=new File([buf],"Голосовое "+fmtSec(dur)+".wav",{type:"audio/wav"});
+  fbSay('<p class="hint">Сохраняю запись…</p>'); fbRefresh();
+  S.assets.upload(file).then(function(res){
+    var d=fbDraft(r.sub); d.audio={id:res.id,url:res.url||("/_blob/"+res.id),name:file.name,type:"audio/wav",dur:dur}; d.dirty=true;
+    fbSay(''); if(V&&V.sub===r.sub)fbRefresh();
+  },function(){fbSay('<p class="err">Не получилось сохранить запись. Попробуйте ещё раз.</p>');});
 }
 
 function subById(id){for(var i=0;i<S.subs.length;i++)if(S.subs[i].id===id)return S.subs[i];return null;}
@@ -750,6 +860,7 @@ function renderViewer(){
     (V.note?'<p class="v-note">'+esc(V.note)+'</p>':'')+
     (V.sub?'<div class="v-subbar">'+(f.type!=="text/note"?'<button class="link danger-link" data-action="v-del-file">Удалить это фото</button>':'')+
       '<button class="link danger-link" data-action="v-del-all">Удалить всю работу</button><div id="v-del"></div></div>':'')+
+    (V.sub?'<section class="v-fb" id="v-fb" aria-label="Ответ ученику">'+fbPanelHtml()+'</section>':'')+
     '<p class="err" id="v-err"></p><div class="v-body" id="v-body"><p class="muted">Открываю…</p></div></div></div>';
   var body=$("#v-body"), my=V;
   var t=f.type||"";
@@ -1205,7 +1316,7 @@ document.addEventListener("mousedown",function(e){downTarget=e.target;});
 document.addEventListener("click",function(e){
   var ov=(e.target.classList&&e.target.classList.contains("overlay"))?e.target:null;
   if(ov&&(downTarget===ov||downTarget===null)){
-    if(ov.classList.contains("viewer")){V=null;renderViewer();} else tryClose();
+    if(ov.classList.contains("viewer")){closeViewer();} else tryClose();
     return;
   }
   var b=e.target.closest("[data-action]");
@@ -1323,7 +1434,13 @@ document.addEventListener("click",function(e){
     case "v-del-all": askSubDel("all"); break;
     case "v-del-no": $("#v-del").innerHTML=""; break;
     case "v-del-yes": doSubDel(d.k); break;
-    case "v-close": V=null; renderViewer(); break;
+    case "v-close": closeViewer(); break;
+    case "fb-send": fbSend(); break;
+    case "fb-discard": if(V&&V.sub)delete FBD[V.sub]; closeViewer(true); break;
+    case "fb-rm": {var dd=fbDraft(V.sub);dd.files.splice(+d.i,1);dd.dirty=true;fbRefresh();break;}
+    case "fb-audio-rm": {var da=fbDraft(V.sub);da.audio=null;da.dirty=true;fbRefresh();break;}
+    case "fb-rec": recStart(); break;
+    case "fb-rec-stop": recStop(); break;
     case "v-prev": V.i=(V.i-1+V.files.length)%V.files.length; renderViewer(); break;
     case "v-next": V.i=(V.i+1)%V.files.length; renderViewer(); break;
     case "v-save": if(dl&&V)saveFile(); break;
@@ -1357,7 +1474,9 @@ document.addEventListener("click",function(e){
   }
 },true);
 document.addEventListener("change",onDocChange);
+document.addEventListener("input",function(e){if(e.target&&e.target.id==="fb-text"&&V&&V.sub){var d=fbDraft(V.sub);d.text=e.target.value;d.dirty=true;}});
 function onDocChange(e){
+  if(e.target&&e.target.id==="fb-file"&&e.target.files&&e.target.files.length){var fl=Array.prototype.slice.call(e.target.files);e.target.value="";fbUpload(fl);return;}
   if(S.mode==="catalog"&&catChange(e.target))return;
   if(S.mode==="variants"&&vtChange(e.target))return;
   var t=e.target;
@@ -1398,6 +1517,12 @@ function pasteTarget(){return (M.target==="hw"&&!M.noHw)?"hw":(M.target==="board
 document.addEventListener("focusin",function(e){if(M&&M.kind==="lesson"){var w=secOf(e.target);if(w)M.target=w;}});
 document.addEventListener("mousedown",function(e){if(M&&M.kind==="lesson"){var w=secOf(e.target);if(w)M.target=w;}});
 document.addEventListener("paste",function(e){
+  if(!M&&V&&V.sub&&S.assets){
+    var it=(e.clipboardData&&e.clipboardData.items)||[], fs2=[];
+    for(var q=0;q<it.length;q++)if(it[q].kind==="file"){var ff=it[q].getAsFile();if(ff)fs2.push(ff);}
+    if(fs2.length){e.preventDefault();fbUpload(fs2);}
+    return;
+  }
   if(!M||M.kind!=="lesson"||!S.assets)return;
   var items=(e.clipboardData&&e.clipboardData.items)||[], files=[];
   for(var i=0;i<items.length;i++){
@@ -1421,7 +1546,7 @@ document.addEventListener("drop",function(e){
 document.addEventListener("keydown",function(e){
   if(e.key==="Escape"&&P.open){rpClose();render();return;}
   if(e.key==="Escape"){
-    if(V){V=null;renderViewer();return;}
+    if(V){closeViewer();return;}
     if(M){tryClose();return;}
   }
   if(e.key==="Enter"&&M&&M.kind==="groups"&&e.target.dataset&&e.target.dataset.sname){

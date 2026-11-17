@@ -174,7 +174,7 @@ function tooManyAttempts(ip) {
 }
 
 /* ---------- файлы ---------- */
-const INLINE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'text/plain', 'text/csv', 'text/markdown']);
+const INLINE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'text/plain', 'text/csv', 'text/markdown', 'audio/wav', 'audio/mpeg', 'audio/mp4', 'audio/webm', 'audio/ogg']);
 function safeMime(m) {
   m = String(m || '').split(';')[0].trim().toLowerCase();
   if (INLINE_TYPES.has(m)) return m;
@@ -207,6 +207,19 @@ function serveFile(req, res, id, download) {
       'Cache-Control': 'private, max-age=31536000, immutable',
     });
     if (f.mime.startsWith('text/')) headers['Content-Security-Policy'] = "default-src 'none'; sandbox";
+    headers['Accept-Ranges'] = 'bytes';
+    // Safari проигрывает аудио только с поддержкой Range-запросов
+    const rm = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+    if (rm && (rm[1] || rm[2])) {
+      let a = rm[1] ? +rm[1] : st.size - +rm[2], b = rm[1] && rm[2] ? Math.min(+rm[2], st.size - 1) : st.size - 1;
+      if (a < 0) a = 0;
+      if (a > b || a >= st.size) { res.writeHead(416, Object.assign({}, SEC_HEADERS, { 'Content-Range': 'bytes */' + st.size })); return res.end(); }
+      headers['Content-Range'] = 'bytes ' + a + '-' + b + '/' + st.size;
+      headers['Content-Length'] = b - a + 1;
+      res.writeHead(206, headers);
+      if (req.method === 'HEAD') return res.end();
+      return fs.createReadStream(p, { start: a, end: b }).pipe(res);
+    }
     res.writeHead(200, headers);
     if (req.method === 'HEAD') return res.end();
     fs.createReadStream(p).pipe(res);
@@ -285,7 +298,8 @@ function publicVariant(id, v, sid) {
 function subId(lessonId, sid) { return (lessonId + '_' + sid).slice(0, 64); }
 function publicSub(d) {
   if (!d) return null;
-  return { files: d.files || [], comment: d.comment || '', updated: d.updated || 0, seen: !!d.seenAt && d.seenAt >= (d.updated || 0) };
+  const fb = d.fb && d.fb.at ? { text: String(d.fb.text || ''), files: Array.isArray(d.fb.files) ? d.fb.files : [], audio: d.fb.audio || null, at: d.fb.at } : null;
+  return { files: d.files || [], comment: d.comment || '', updated: d.updated || 0, seen: !!d.seenAt && d.seenAt >= (d.updated || 0), fb };
 }
 function studentCtx(tok) {
   const row = Q.linkByTok.get(tok);
