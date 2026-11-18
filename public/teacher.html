@@ -391,6 +391,16 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .cat-ls{margin:0;padding-left:18px;font-size:14px;display:flex;flex-direction:column;gap:2px}
 .cat-foot,.cat-foot2{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
 @media (max-width:600px){.cat-meta{display:none}}
+/* шкала перевода баллов и баллы за 2-ю часть */
+.sc-exam{margin-top:16px}.sc-exam h3{margin:0 0 8px;font-size:15px}
+.sc-grid{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.sc-cell{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.sc-cell input{width:54px;text-align:center;border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:5px 2px;font-size:14px;color:var(--text)}
+.sc-set{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0}.sc-set>span{min-width:130px;font-weight:600}
+.sc-set select{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 8px;font-size:14px;color:var(--text)}
+.sc-paste{width:100%;max-width:420px;box-sizing:border-box;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px;font-size:14px;color:var(--text);font-family:inherit}
+.vt-p2{display:inline-flex;align-items:center;gap:4px;margin-top:4px;font-size:12px;color:var(--muted)}
+.vt-p2in{width:44px;text-align:center;border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:2px;font-size:13px;color:var(--text)}
 /* варианты */
 .vt-row{display:flex;align-items:center;flex-wrap:wrap}
 .vt-row .cat-row{flex:1;min-width:240px}
@@ -1917,6 +1927,126 @@ function catChange(tg){
 
 /* ---------- варианты (учитель) ---------- */
 var VT={open:{},del:null,msg:"",busy:false,group:null};
+/* ---------- шкала перевода баллов и баллы за 2-ю часть ---------- */
+var SC={cfg:null,v2:{},pt:{},paste:{},open:false,loaded:false,loading:false,err:"",msg:"",t:null};
+function scReq(m,u,b){
+  return fetch(u,{method:m,credentials:"same-origin",headers:{"X-Journal":"1","Content-Type":"application/json"},body:b?JSON.stringify(b):undefined})
+    .then(function(r){return r.json().catch(function(){return {};}).then(function(j){if(!r.ok)throw new Error(j.error||("Ошибка "+r.status));return j;});});
+}
+function scCfg(){
+  if(!SC.cfg)SC.cfg={};
+  var c=SC.cfg;
+  if(!Array.isArray(c.ege))c.ege=[]; if(!Array.isArray(c.oge))c.oge=[];
+  if(!c.groups||typeof c.groups!=="object"||Array.isArray(c.groups))c.groups={};
+  return c;
+}
+function scLoad(){
+  SC.loading=true;
+  Promise.all([scReq("GET","/api/docs/settings"),scReq("GET","/api/docs/vscores")]).then(function(r){
+    SC.cfg=null; (r[0].docs||[]).forEach(function(d){if(d.id==="scales")SC.cfg=d.data;});
+    SC.v2={}; (r[1].docs||[]).forEach(function(d){if(d.data&&typeof d.data.score==="number")SC.v2[d.id]=d.data.score;});
+    scCfg(); SC.loaded=true; SC.loading=false; SC.err="";
+    if(S.mode==="variants")render();
+  },function(e){SC.loading=false;SC.err=e.message||"ошибка";if(S.mode==="variants")render();});
+}
+function scMsg(t){SC.msg=t;var el=document.getElementById("sc-msg");if(el)el.textContent=t;}
+function scSave(){
+  clearTimeout(SC.t); scMsg("Сохраняю…");
+  SC.t=setTimeout(function(){
+    var c=scCfg();
+    scReq("PUT","/api/docs/settings/scales",{ege:c.ege,oge:c.oge,groups:c.groups,updated:Date.now()})
+      .then(function(){scMsg("Сохранено");},function(e){scMsg("Не сохранилось: "+e.message);});
+  },600);
+}
+// к какому экзамену готовится группа, если учитель не выбрал вручную
+function scAuto(name){
+  var t=String(name||"");
+  if(/огэ|омикрон|omicron/i.test(t))return "oge";
+  if(/егэ|альфа|бет+а|alpha|beta/i.test(t))return "ege";
+  return "none";
+}
+var SC_EX={ege:"ЕГЭ",oge:"ОГЭ",none:"не переводить"};
+function scExamHtml(ex,label){
+  var a=scCfg()[ex], max=a.length?String(a.length-1):"";
+  var h='<div class="sc-exam"><h3>'+label+'</h3>'+
+    '<div class="field" style="max-width:280px"><label for="sc-max-'+ex+'">Максимальный первичный балл</label><input type="text" inputmode="numeric" id="sc-max-'+ex+'" data-scmax="'+ex+'" value="'+max+'" placeholder="например, 31"></div>';
+  if(a.length){
+    h+='<p class="hint" style="margin:8px 0 0">Под каждым первичным баллом впишите соответствующий ему результат по шкале. Пустая клетка — перевод не покажется.</p><div class="sc-grid">';
+    for(var i=0;i<a.length;i++)h+='<label class="sc-cell"><span>'+i+'</span><input type="text" inputmode="decimal" data-sccell="'+ex+'" data-p="'+i+'" value="'+(a[i]==null?"":esc(a[i]))+'" aria-label="Первичный '+i+'"></label>';
+    h+='</div>';
+  }
+  h+='<div class="field"><label for="sc-paste-'+ex+'">Вставить шкалу списком</label>'+
+    '<textarea class="sc-paste" id="sc-paste-'+ex+'" data-scpaste="'+ex+'" rows="3" placeholder="Каждая строка: первичный, пробел, результат. Например:&#10;0 0&#10;1 6&#10;2 11">'+esc(SC.paste[ex]||"")+'</textarea>'+
+    '<div style="margin-top:6px"><button class="btn ghost" data-action="vt-sc-paste" data-ex="'+ex+'">Применить список</button></div></div></div>';
+  return h;
+}
+function renderScalesT(){
+  if(!SC.loaded&&!SC.loading&&!SC.err)scLoad();
+  var h='<section class="panel"><div class="plan-head"><h2>Шкала перевода баллов</h2><button class="btn ghost" data-action="vt-sc-toggle">'+(SC.open?"Свернуть":"Настроить")+'</button></div>';
+  if(!SC.open)return h+'<p class="hint" style="margin-top:6px">Первичный балл (первая попытка по части 1 плюс баллы за часть 2) переводится по этой шкале, результат видят ученики в статистике.</p></section>';
+  if(SC.err)return h+'<p class="pg-msg" role="status">Не получилось загрузить: '+esc(SC.err)+'</p></section>';
+  if(!SC.loaded)return h+'<p class="hint">Загружаю…</p></section>';
+  if(S.groups.length){
+    h+='<div class="sc-exam"><h3>К какому экзамену готовится группа</h3>'+S.groups.map(function(g){
+      var cur=scCfg().groups[g.id]; if(cur!=="ege"&&cur!=="oge"&&cur!=="none")cur="auto";
+      return '<div class="sc-set"><span>'+esc(g.name||"Группа")+'</span><select data-scgroup="'+esc(g.id)+'" aria-label="Экзамен для группы '+esc(g.name||"")+'">'+
+        [["auto","Определить по названию (сейчас: "+SC_EX[scAuto(g.name)]+")"],["ege","ЕГЭ"],["oge","ОГЭ"],["none","Не переводить"]].map(function(o){
+          return '<option value="'+o[0]+'"'+(cur===o[0]?" selected":"")+'>'+o[1]+'</option>';}).join("")+'</select></div>';
+    }).join("")+'</div>';
+  }
+  h+=scExamHtml("ege","Шкала ЕГЭ")+scExamHtml("oge","Шкала ОГЭ");
+  h+='<p class="hint" id="sc-msg" role="status" style="margin-top:10px">'+esc(SC.msg)+'</p></section>';
+  return h;
+}
+function scCellInput(t){
+  var ex=t.dataset.sccell, p=+t.dataset.p, raw=t.value.trim().replace(",","."), a=scCfg()[ex];
+  if(raw==="")a[p]=null;
+  else if(/^\d+(\.\d+)?$/.test(raw))a[p]=parseFloat(raw);
+  else{t.classList.add("vt-miss");return;}
+  t.classList.remove("vt-miss"); scSave();
+}
+function scResize(ex,val){
+  var n=parseInt(String(val).trim(),10), a=scCfg()[ex];
+  if(isNaN(n)||n<0||n>100){render();return;}
+  while(a.length<n+1)a.push(null);
+  a.length=n+1; scSave(); render();
+}
+function scPaste(ex){
+  var a=scCfg()[ex], n=0;
+  String(SC.paste[ex]||"").split(/\r?\n/).forEach(function(line){
+    var m=/(\d+)\D+(\d+(?:[.,]\d+)?)/.exec(line); if(!m)return;
+    var pr=+m[1]; if(pr>100)return;
+    while(a.length<pr+1)a.push(null);
+    a[pr]=parseFloat(m[2].replace(",",".")); n++;
+  });
+  SC.paste[ex]="";
+  if(n){scSave();scMsg("Применено строк: "+n);} else scMsg("Не нашла в списке ни одной пары чисел.");
+  render();
+}
+function scGroupExam(id,val){
+  var gs=scCfg().groups;
+  if(val==="auto")delete gs[id]; else gs[id]=val;
+  scSave();
+}
+function p2Key(vid,sid){return (vid+"_"+sid).slice(0,64);}
+function p2Cell(v,st){
+  if(!(v.part2||[]).length||!SC.loaded)return "";
+  var val=SC.v2[p2Key(v.id,st.id)];
+  return '<label class="vt-p2">ч. 2, баллы <input type="text" inputmode="decimal" class="vt-p2in" data-vp2="'+esc(v.id)+'" data-s="'+esc(st.id)+'" value="'+(val==null?"":esc(val))+'" aria-label="Баллы за часть 2: '+esc(st.name)+'"></label>';
+}
+function p2Typed(t){
+  var vid=t.dataset.vp2, sid=t.dataset.s, key=p2Key(vid,sid), raw=t.value.trim().replace(",",".");
+  clearTimeout(SC.pt[key]);
+  if(raw!==""&&!/^\d+(\.\d+)?$/.test(raw)){t.classList.add("vt-miss");return;}
+  t.classList.remove("vt-miss");
+  SC.pt[key]=setTimeout(function(){
+    if(raw===""){delete SC.v2[key];scReq("DELETE","/api/docs/vscores/"+key).catch(function(){});return;}
+    var n=parseFloat(raw); SC.v2[key]=n;
+    scReq("PUT","/api/docs/vscores/"+key,{variantId:vid,studentId:sid,score:n,updated:Date.now()})
+      .catch(function(e){alert("Баллы за часть 2 не сохранились: "+e.message);});
+  },600);
+}
+
 function varById(id){for(var i=0;i<S.vars.length;i++)if(S.vars[i].id===id)return S.vars[i];return null;}
 function attFor(vid,sid){for(var i=0;i<S.atts.length;i++){var a=S.atts[i];if(a.variantId===vid&&a.studentId===sid)return a;}return null;}
 function attSummary(a,v){
@@ -1931,6 +2061,7 @@ function renderVariantsT(){
   h+='<section class="panel vt-up"><h2>Загрузить варианты</h2><p class="hint" style="margin:6px 0 10px">Архив с вариантами, который подготовил Claude: задания картинками и ответы. Ответы хранятся только на вашем сервере, ученикам они не видны.</p>'+
     '<div class="cat-btns"><label class="btn" for="vt-file" style="cursor:pointer">Выбрать архив</label><input type="file" id="vt-file" accept=".zip,application/zip" hidden></div>'+
     (VT.msg?'<p class="pg-msg" role="status" style="margin-top:8px">'+esc(VT.msg)+'</p>':'')+'</section>';
+  h+=renderScalesT();
   var vs=S.vars.slice().sort(function(a,b){return vSet(b).localeCompare(vSet(a),'ru',{numeric:true})||String(a.title||'').localeCompare(String(b.title||''),'ru',{numeric:true})||(a.order||0)-(b.order||0);});
   var vsets=[];vs.forEach(function(v){if(vsets.indexOf(vSet(v))<0)vsets.push(vSet(v));});
   if(!vs.length)return h+'<div class="panel empty">Вариантов пока нет.</div>';
@@ -1954,6 +2085,7 @@ function renderVariantsT(){
             var r=attSummary(attFor(v.id,s.id),v), sub=subFor("var-"+v.id,s.id), hasSub=sub&&((sub.files&&sub.files.length)||sub.comment);
             var cell=r?'<span class="sc-t '+scoreCls(r.best,r.total)+'">'+r.best+'/'+r.total+'</span><span class="vt-small">1-я: '+r.first+' · ×'+r.count+(r.revealed?' · подсм. '+r.revealed:'')+'</span>':'<span class="muted">—</span>';
             if(hasSub)cell+='<button class="sub-b'+(subUnseen(sub)?' new':'')+'" data-action="sub-open" data-l="var-'+esc(v.id)+'" data-s="'+esc(s.id)+'">ч. 2</button>';
+            cell+=p2Cell(v,s);
             return '<td>'+cell+'</td>';
           }).join("")+'</tr>';
         }).join("")+'</tbody></table></div><p class="hint" style="margin-top:8px">В клетке: лучший результат первой части, ниже — результат с первой попытки, число попыток и сколько ответов ученик подсмотрел. «ч. 2» — фото решений второй части.</p>';
@@ -1987,6 +2119,8 @@ function renderVariantsT(){
 }
 function vtAction(a,d){
   switch(a){
+    case "vt-sc-toggle": SC.open=!SC.open; render(); return true;
+    case "vt-sc-paste": scPaste(d.ex); return true;
     case "vt-open": S.mode="variants"; window.scrollTo(0,0); render(); return true;
     case "vt-back": S.mode=null; render(); return true;
     case "vt-group": VT.group=d.g; render(); return true;
@@ -2000,17 +2134,24 @@ function vtAction(a,d){
       S.vars=S.vars.filter(function(x){return x.id!==v.id;});
       write("variants/"+v.id,function(){return S.db.doc("variants/"+v.id).delete();});
       S.atts.filter(function(x){return x.variantId===v.id;}).forEach(function(x){write("attempts/"+x.id,function(){return S.db.doc("attempts/"+x.id).delete();});});
+      Object.keys(SC.v2).filter(function(k){return k.indexOf(v.id+"_")===0;}).forEach(function(k){delete SC.v2[k];scReq("DELETE","/api/docs/vscores/"+k).catch(function(){});});
       VT.del=null; render(); return true;}
   }
   return false;
 }
 function vtInput(t){
+  if(t.dataset.vp2!==undefined){p2Typed(t);return true;}
+  if(t.dataset.sccell!==undefined){scCellInput(t);return true;}
+  if(t.dataset.scmax!==undefined)return true;
+  if(t.dataset.scpaste!==undefined){SC.paste[t.dataset.scpaste]=t.value;return true;}
   if(t.dataset.vtt){var v=varById(t.dataset.vtt);v.title=t.value;clearTimeout(VT.tt);VT.tt=setTimeout(function(){saveVar(v);},600);return true;}
   if(t.dataset.vts){var vs1=varById(t.dataset.vts);vs1.set=t.value.trim();clearTimeout(VT.ts);VT.ts=setTimeout(function(){saveVar(vs1);},600);return true;}
   if(t.dataset.vta){var v2=varById(t.dataset.vta);v2.part1[+t.dataset.k].answer=t.value.trim();t.classList.toggle("vt-miss",!t.value.trim());clearTimeout(VT.ta);VT.ta=setTimeout(function(){saveVar(v2);},600);return true;}
   return false;
 }
 function vtChange(t){
+  if(t.dataset.scmax!==undefined){scResize(t.dataset.scmax,t.value);return true;}
+  if(t.dataset.scgroup!==undefined){scGroupExam(t.dataset.scgroup,t.value);return true;}
   if(t.dataset.vtg){var v=varById(t.dataset.vtg);var gs=(v.groups||[]).filter(function(x){return x!==t.dataset.g;});if(t.checked)gs.push(t.dataset.g);v.groups=gs;saveVar(v);render();return true;}
   if(t.id==="vt-file"&&t.files&&t.files[0]){
     var f=t.files[0]; t.value=""; VT.msg="Загружаю «"+f.name+"» ("+Math.max(1,Math.round(f.size/1048576))+" МБ)…"; render();
