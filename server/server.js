@@ -92,7 +92,7 @@ const Q = {
   linkAll: db.prepare('SELECT student_id, token FROM student_links'),
   linkPut: db.prepare('INSERT INTO student_links (student_id, token, created) VALUES (?, ?, ?) ON CONFLICT(student_id) DO UPDATE SET token = excluded.token, created = excluded.created'),
 };
-const COLLS = new Set(['groups', 'lessons', 'submissions', 'catalogs', 'variants', 'attempts']);
+const COLLS = new Set(['groups', 'lessons', 'submissions', 'catalogs', 'variants', 'attempts', 'settings', 'vscores']);
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 function allDocs(coll) { return Q.list.all(coll).map(r => ({ id: r.id, data: JSON.parse(r.data), updated: r.updated })); }
 function getDoc(coll, id) { const r = Q.get.get(coll, id); return r ? JSON.parse(r.data) : null; }
@@ -285,12 +285,25 @@ function variantSet(v) {
   if (!m) return set;
   return (/ЕГЭ\s*проф/i.test(src) ? 'ЕГЭ профиль ' : 'ЕГЭ ') + m[1];
 }
-function publicVariant(id, v, sid) {
+// Баллы за вторую часть ставит учитель вручную (коллекция vscores)
+function part2Score(vid, sid) {
+  const d = getDoc('vscores', (vid + '_' + sid).slice(0, 64));
+  return d && typeof d.score === 'number' && isFinite(d.score) ? d.score : null;
+}
+// Шкалы перевода первичных баллов во вторичные (настраивает учитель)
+function publicScales() {
+  const d = getDoc('settings', 'scales') || {};
+  const arr = a => Array.isArray(a) ? a.map(x => (typeof x === 'number' && isFinite(x)) ? x : null) : [];
+  return { ege: arr(d.ege), oge: arr(d.oge), groups: isPlain(d.groups) ? d.groups : {} };
+}
+function publicVariant(id, v, sid, gids) {
   const strip = t => ({ n: String(t.n), files: t.files || [] });
   return {
     id, title: v.title || 'Вариант', set: variantSet(v), order: v.order || 0,
     part1: (v.part1 || []).map(strip), part2: (v.part2 || []).map(strip),
     result: attemptsPublic(getDoc('attempts', (id + '_' + sid).slice(0, 64)), v),
+    p2: part2Score(id, sid),
+    groups: gids ? (v.groups || []).filter(g => gids.has(g)) : [],
     sub: publicSub(getDoc('submissions', subId('var-' + id, sid))),
   };
 }
@@ -475,14 +488,14 @@ function studentPayload(tok) {
     groups: groups.map(g => ({ id: g.id, name: g.data.name })),
     variants: allDocs('variants')
       .filter(v => (v.data.groups || []).some(id => gids.has(id)))
-      .map(v => publicVariant(v.id, v.data, sid))
+      .map(v => publicVariant(v.id, v.data, sid, gids))
       .sort((a, b) => b.set.localeCompare(a.set, 'ru', { numeric: true }) || a.title.localeCompare(b.title, 'ru', { numeric: true }) || a.order - b.order),
     catalogs: allDocs('catalogs')
       .filter(c => (c.data.groups || []).some(id => gids.has(id)))
       .sort((a, b) => (a.data.order || 0) - (b.data.order || 0))
       .map(c => ({ id: c.id, name: c.data.name || 'Задания', tasks: (c.data.tasks || []).map(t => ({
         n: String(t.n || ''), title: t.title || '', materials: t.materials || [], practice: t.practice || [] })) })),
-    lessons, groupAvg: avg, groupAvgByMonth: avgByMonth,
+    lessons, groupAvg: avg, groupAvgByMonth: avgByMonth, scales: publicScales(),
   };
 }
 
