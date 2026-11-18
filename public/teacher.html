@@ -391,6 +391,28 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .cat-ls{margin:0;padding-left:18px;font-size:14px;display:flex;flex-direction:column;gap:2px}
 .cat-foot,.cat-foot2{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
 @media (max-width:600px){.cat-meta{display:none}}
+/* проверка домашек */
+.hw-badge{display:inline-block;min-width:18px;padding:0 6px;margin-left:4px;border-radius:999px;background:var(--ink);color:var(--on-ink);font-size:12px;line-height:18px;text-align:center}
+.hw-filters{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+.hwc{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.hwc-head{display:flex;gap:6px 12px;align-items:baseline;flex-wrap:wrap;margin-bottom:10px}
+.hwc-grid{display:grid;grid-template-columns:1fr;gap:12px}
+@media (min-width:760px){.hwc-grid{grid-template-columns:minmax(220px,2fr) 3fr}}
+.hwc-task,.hwc-work{min-width:0}
+.hwc-task{background:var(--ink-soft);border-radius:10px;padding:10px 12px;align-self:start}
+.tk-title{font-weight:600;font-size:14px;margin-bottom:4px}
+.tk-text{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}
+.tk-files{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.tk-img{max-height:220px;max-width:100%;border-radius:8px;border:1px solid var(--line);display:block}
+.tk-file{font-size:13px}
+.hw-work{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.hw-wf{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:4px;cursor:pointer;max-width:100%;color:var(--text)}
+.hw-img{max-height:300px;max-width:100%;border-radius:7px;display:block}
+.hw-pdf{padding:6px 10px;font-size:13px}
+.hw-tag{font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;background:var(--ink-soft);color:var(--muted)}
+.hw-tag.new{background:var(--ink);color:var(--on-ink)}.hw-tag.ok{color:var(--ok)}
+.hwc-foot{margin-top:10px}
+.v-task{padding:10px 14px;border-bottom:1px solid var(--line);max-height:34vh;overflow:auto;font-size:14px}
 /* шкала перевода баллов и баллы за 2-ю часть */
 .sc-exam{margin-top:16px}.sc-exam h3{margin:0 0 8px;font-size:15px}
 .sc-grid{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
@@ -485,7 +507,7 @@ function render(){
   if(S.view==="plan"&&ae&&ae.tagName==="INPUT"&&ae.closest&&ae.closest("#plan"))return;
   if((S.mode==="catalog"||S.mode==="variants")&&ae&&ae.tagName==="INPUT"&&ae.type==="text"&&ae.closest&&ae.closest("#app"))return;
   var h='<header class="top"><div><h1>Журнал групп</h1><p class="sub">Посещаемость и домашние задания</p></div>';
-  if(S.db&&S.canWrite&&S.loaded.g)h+='<div class="top-btns">'+(window.SITE?'<button class="btn ghost" data-action="vt-open">Варианты</button><button class="btn ghost" data-action="cat-open">Банк заданий</button>':'')+(S.groups.length?'<button class="btn ghost" data-action="links">Ссылки учеников</button>':'')+'<button class="btn ghost" data-action="groups">Группы и ученики</button></div>';
+  if(S.db&&S.canWrite&&S.loaded.g)h+='<div class="top-btns">'+(window.SITE?'<button class="btn ghost" data-action="hw-open">Проверка домашек'+hwBadge()+'</button><button class="btn ghost" data-action="vt-open">Варианты</button><button class="btn ghost" data-action="cat-open">Банк заданий</button>':'')+(S.groups.length?'<button class="btn ghost" data-action="links">Ссылки учеников</button>':'')+'<button class="btn ghost" data-action="groups">Группы и ученики</button></div>';
   h+='<div class="site-links"><button class="link" data-action="push-open">Уведомления</button><button class="link" data-action="import">Перенос данных</button><button class="link" data-action="logout">Выйти</button></div>';
   if(!window.SITE&&S.db&&S.loaded.l&&dl)h+='<div class="site-links"><button class="link" data-action="export">Экспорт для переезда</button></div>';
   h+='</header>';
@@ -495,6 +517,7 @@ function render(){
     h+='<div class="panel empty">'+(S.stale?"Журнал пока не загрузился. Проверьте интернет: страница подтянет данные сама, как только связь появится.":"Загружаю журнал…")+'</div>';
     $("#app").innerHTML=h;return;
   }
+  if(S.mode==="hw"){$("#app").innerHTML=h+renderHwPage();return;}
   if(S.mode==="catalog"){$("#app").innerHTML=h+renderCatalog();return;}
   if(S.mode==="variants"){$("#app").innerHTML=h+renderVariantsT();return;}
   if(!S.groups.length){
@@ -717,18 +740,103 @@ function renderNewWorks(g){
       return '<button class="chip nw-chip" data-action="sub-open" data-l="'+esc(x.lessonId)+'" data-s="'+esc(x.studentId)+'">'+esc(names[x.studentId])+' · '+(vv?esc(vv.title)+', ч. 2':'к '+fmtShort(l.date))+' · '+(n?n+' '+plural(n,"файл","файла","файлов"):"комментарий")+'</button>';
     }).join("")+'</div></section>';
 }
+/* ---------- проверка домашек: все присланные работы в одном месте ---------- */
+var HW={st:"new",gid:"all",limit:30};
+// задание, к которому прислана работа: домашка занятия или вторая часть варианта
+function taskInfo(l,v){
+  if(v){
+    var fl=[]; (v.part2||[]).forEach(function(t){(t.files||[]).forEach(function(f,i){
+      fl.push({id:f.id,url:f.url,type:f.type||"image/jpeg",name:"Задание "+t.n+((t.files||[]).length>1?" ("+(i+1)+")":"")});});});
+    return {title:v.title+(vSet(v)?" · "+vSet(v):"")+", часть 2",text:"",files:fl};
+  }
+  if(l)return {title:fmtLong(l.date)+(l.topic?" · "+l.topic:""),text:l.noHw?"Домашки к этому занятию не было":(l.hw||""),files:l.noHw?[]:(l.files||[])};
+  return null;
+}
+function taskHtml(t){
+  if(!t)return "";
+  var h='<div class="label">Задание</div><div class="tk-title">'+esc(t.title)+'</div>';
+  if(t.text)h+='<p class="tk-text">'+esc(t.text)+'</p>';
+  else if(!t.files.length)h+='<p class="tk-text muted">Текст задания не записан</p>';
+  if(t.files.length)h+='<div class="tk-files">'+t.files.map(function(f){
+    var u=esc(fileUrl(f));
+    return /^image\//.test(f.type||"")?'<a href="'+u+'" target="_blank" rel="noopener"><img class="tk-img" src="'+u+'" alt="'+esc(f.name)+'" loading="lazy"></a>'
+      :'<a class="tk-file" href="'+u+'" target="_blank" rel="noopener">'+esc(f.name)+'</a>';}).join("")+'</div>';
+  return h;
+}
+function hwItems(){
+  var names={}, groupOf={};
+  S.groups.forEach(function(g){(g.students||[]).forEach(function(st){names[st.id]=st.name; if(!groupOf[st.id])groupOf[st.id]=g;});});
+  var out=[];
+  S.subs.forEach(function(x){
+    if(!names[x.studentId]||!((x.files&&x.files.length)||x.comment))return;
+    var l=findLesson(x.lessonId), v=subVar(x.lessonId); if(!l&&!v)return;
+    var g=l?(S.groups.filter(function(gr){return gr.id===l.groupId;})[0]||groupOf[x.studentId]):groupOf[x.studentId];
+    out.push({x:x,l:l,v:v,name:names[x.studentId],g:g});
+  });
+  return out.sort(function(a,b){return (b.x.updated||0)-(a.x.updated||0);});
+}
+function hwBadge(){var n=hwItems().filter(function(it){return subUnseen(it.x);}).length;return n?' <span class="hw-badge">'+n+'</span>':'';}
+function hwCard(it){
+  var x=it.x, n=(x.files||[]).length, sent=x.fb&&x.fb.at, un=subUnseen(x);
+  var tag=un?'<span class="hw-tag new">Новая</span>':sent?'<span class="hw-tag ok">Ответ отправлен</span>':'<span class="hw-tag">Просмотрена</span>';
+  var work='';
+  if(x.comment)work+='<p class="tk-text">Комментарий ученика: '+esc(x.comment)+'</p>';
+  if(n)work+='<div class="hw-work">'+x.files.map(function(f,i){
+    var img=/^image\//.test(f.type||"");
+    return '<button type="button" class="hw-wf" data-action="sub-open" data-l="'+esc(x.lessonId)+'" data-s="'+esc(x.studentId)+'" data-i="'+i+'" title="Открыть, проверить и ответить">'+
+      (img?'<img class="hw-img" src="'+esc(fileUrl(f))+'" alt="Работа: '+esc(it.name)+'" loading="lazy">':'<span class="hw-pdf">'+esc(f.name)+'</span>')+'</button>';}).join("")+'</div>';
+  return '<article class="hwc"><div class="hwc-head"><b>'+esc(it.name)+'</b>'+(it.g?'<span class="muted">'+esc(it.g.name)+'</span>':'')+
+    '<span class="muted">прислано '+esc(fSubTime.format(new Date(x.updated||Date.now())))+'</span>'+tag+'</div>'+
+    '<div class="hwc-grid"><section class="hwc-task">'+taskHtml(taskInfo(it.l,it.v))+'</section>'+
+    '<section class="hwc-work"><div class="label">Работа ученика</div>'+work+
+    '<div class="hwc-foot"><button class="btn" data-action="sub-open" data-l="'+esc(x.lessonId)+'" data-s="'+esc(x.studentId)+'">Открыть и ответить</button></div></section></div></article>';
+}
+function renderHwPage(){
+  var h='<div class="toolbar"><button class="btn ghost" data-action="hw-back">← К журналу</button><h2 style="margin:0">Проверка домашек</h2></div>';
+  var all=hwItems();
+  var base=all.filter(function(it){return HW.gid==="all"||(it.g&&it.g.id===HW.gid);});
+  var nNew=base.filter(function(it){return subUnseen(it.x);}).length;
+  var items=base.filter(function(it){
+    if(HW.st==="new")return subUnseen(it.x);
+    if(HW.st==="noans")return !(it.x.fb&&it.x.fb.at);
+    return true;});
+  function seg(label,opts,cur,act,key){
+    return '<div class="seg" role="group" aria-label="'+label+'">'+opts.map(function(o){
+      return '<button type="button" data-action="'+act+'" data-'+key+'="'+esc(o[0])+'" aria-pressed="'+(cur===o[0])+'">'+esc(o[1])+'</button>';}).join("")+'</div>';
+  }
+  h+='<div class="hw-filters">'+seg("Показать",[["new","Новые"+(nNew?" · "+nNew:"")],["noans","Без ответа"],["all","Все"]],HW.st,"hw-st","st");
+  if(S.groups.length>1)h+=seg("Группа",[["all","Все группы"]].concat(S.groups.map(function(g){return [g.id,g.name];})),HW.gid,"hw-group","g");
+  h+='</div>';
+  if(!items.length){
+    return h+'<div class="panel empty">'+(HW.st==="new"?"Новых работ нет. Всё просмотрено.":HW.st==="noans"?"Работ без ответа нет.":"Присланных работ пока нет.")+'</div>';
+  }
+  h+=items.slice(0,HW.limit).map(hwCard).join("");
+  if(items.length>HW.limit)h+='<p style="text-align:center"><button class="btn ghost" data-action="hw-more">Показать ещё ('+(items.length-HW.limit)+')</button></p>';
+  return h;
+}
+function hwAction(a,d){
+  switch(a){
+    case "hw-open": S.mode="hw"; window.scrollTo(0,0); render(); return true;
+    case "hw-back": S.mode=null; render(); return true;
+    case "hw-st": HW.st=d.st; HW.limit=30; render(); return true;
+    case "hw-group": HW.gid=d.g; HW.limit=30; render(); return true;
+    case "hw-more": HW.limit+=30; render(); return true;
+  }
+  return false;
+}
 function subButton(l,s){
   var x=subFor(l.id,s.id); if(!x||!((x.files&&x.files.length)||x.comment))return "";
   var n=(x.files||[]).length;
   return '<button class="sub-b'+(subUnseen(x)?' new':'')+'" data-action="sub-open" data-l="'+esc(l.id)+'" data-s="'+esc(s.id)+'">Решение'+(n?' · '+n+' '+plural(n,"файл","файла","файлов"):'')+(x.fb&&x.fb.at?' · ответ ✓':'')+'</button>';
 }
-function openSub(lid,sid){
+function openSub(lid,sid,idx){
   var x=subFor(lid,sid), l=findLesson(lid), g=curGroup(); if(!x)return;
   var st=(g&&g.students||[]).filter(function(s){return s.id===sid;})[0];
   var vv=subVar(lid); if(!st)S.groups.forEach(function(gg){(gg.students||[]).forEach(function(z){if(z.id===sid)st=z;});});
   var note=(st?st.name+' · ':'')+(vv?vv.title+', часть 2':'к занятию '+(l?fmtLong(l.date):''))+' · прислано '+fSubTime.format(new Date(x.updated||Date.now()))+(x.comment?'\nКомментарий: '+x.comment:'');
-  if(x.files&&x.files.length){V={files:x.files,i:0,note:note,sub:x.id};renderViewer();}
-  else{V={files:[{id:'',name:'Комментарий',type:'text/note'}],i:0,note:note,sub:x.id};renderViewer();}
+  var tk=taskInfo(l,vv), ix=Math.min(Math.max(+idx||0,0),Math.max(0,(x.files||[]).length-1));
+  if(x.files&&x.files.length){V={files:x.files,i:ix,note:note,sub:x.id,task:tk};renderViewer();}
+  else{V={files:[{id:'',name:'Комментарий',type:'text/note'}],i:0,note:note,sub:x.id,task:tk};renderViewer();}
   if(subUnseen(x)){
     var now=Date.now(); x.seenAt=now; render();
     write("submissions/"+x.id,function(){return S.db.doc("submissions/"+x.id).update({seenAt:now});});
@@ -868,6 +976,7 @@ function renderViewer(){
     (dl?'<button class="btn ghost" data-action="v-save">Скачать</button>':'')+
     '<button class="btn" data-action="v-close">Закрыть</button></span></div>'+
     (V.note?'<p class="v-note">'+esc(V.note)+'</p>':'')+
+    (V.task?'<div class="v-task">'+taskHtml(V.task)+'</div>':'')+
     (V.sub?'<div class="v-subbar">'+(f.type!=="text/note"?'<button class="link danger-link" data-action="v-del-file">Удалить это фото</button>':'')+
       '<button class="link danger-link" data-action="v-del-all">Удалить всю работу</button><div id="v-del"></div></div>':'')+
     (V.sub?'<section class="v-fb" id="v-fb" aria-label="Ответ ученику">'+fbPanelHtml()+'</section>':'')+
@@ -1335,6 +1444,7 @@ document.addEventListener("click",function(e){
   var a=b.getAttribute("data-action"), d=b.dataset;
   if(a.indexOf("cat-")===0&&catAction(a,d,b))return;
   if(a.indexOf("vt-")===0&&vtAction(a,d))return;
+  if(a.indexOf("hw-")===0&&hwAction(a,d))return;
   switch(a){
     case "dismiss": S.notice=null; render(); break;
     case "tab":
@@ -1432,7 +1542,7 @@ document.addEventListener("click",function(e){
       if(still&&still.disabled){var other=document.querySelector('[data-action="'+(a==="s-up"?"s-down":"s-up")+'"][data-s="'+d.s+'"]');if(other)other.focus();}
       break;}
     case "open-file": openFile(d.l,d.i,d.w); break;
-    case "sub-open": openSub(d.l,d.s); break;
+    case "sub-open": openSub(d.l,d.s,d.i); break;
     case "tsk": {
       var tl=findLesson(d.l); if(!tl||!S.canWrite)break;
       var tm=mk(tl,d.s), sol=Array.isArray(tm.solved)?tm.solved.slice():[], ti=+d.i, tk=sol.indexOf(ti);
