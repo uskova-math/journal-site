@@ -59,6 +59,16 @@ h2{font-size:16px;margin:0 0 10px}
 .list{display:flex;flex-direction:column;gap:12px}
 .filter{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .filter input{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 10px;flex:1;min-width:180px}
+/* статистика по вариантам */
+.vs-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:15px;margin:18px 0 8px}.vs-h:first-of-type{margin-top:0}
+.vs-wrap{overflow-x:auto}
+.vs-t{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:14px}
+.vs-t th,.vs-t td{padding:8px 10px;text-align:right;border-top:1px solid var(--line);white-space:nowrap}
+.vs-t th:first-child,.vs-t td:first-child{text-align:left;white-space:normal}
+.vs-t thead th{border-top:none;color:var(--muted);font-size:12px;font-weight:600}
+.vs-t .vs-big{font-weight:700}
+.vs-sum{margin:8px 0 0;font-size:13px;color:var(--muted)}
+.vs-fix{display:block;font-size:12px;color:var(--muted);white-space:normal}
 /* статистика */
 .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px}
@@ -422,6 +432,66 @@ function renderStats(){
     return '<div class="s-row"><div class="s-label">'+m[1]+'<span class="s-detail">'+(v==null?"":esc(x[k].d))+'</span></div>'+
       '<div class="bar" role="img" aria-label="'+m[1]+': '+pct(v)+', в среднем по группе '+pct(av)+'">'+bar+tick+'</div><div class="s-val">'+pct(v)+'</div>'+diff+'</div>';
   }).join("")+'<p class="hint" style="margin-top:10px">Тёмная черта на полосе — среднее по группе. Задачи со звёздочкой могут дать больше 100%.</p></section>';
+  h+=renderVarStats();
+  return h;
+}
+
+/* ---------- статистика по вариантам (альфа, бета — ЕГЭ; омикрон — ОГЭ) ---------- */
+// К какому экзамену готовится группа: выбор учителя в настройках шкалы, иначе по названию группы
+function examForGroup(g){
+  var m=(D.scales&&D.scales.groups)||{}, o=m[g.id];
+  if(o==="ege"||o==="oge")return o;
+  if(o==="none")return null;
+  var t=String(g.name||"");
+  if(/огэ|омикрон|omicron/i.test(t))return "oge";
+  if(/егэ|альфа|бет+а|alpha|beta/i.test(t))return "ege";
+  return null;
+}
+function examFor(v){
+  var gs=D.groups||[], ids=v.groups||[];
+  for(var i=0;i<ids.length;i++){
+    var g=gs.filter(function(x){return x.id===ids[i];})[0], ex=g&&examForGroup(g);
+    if(ex)return ex;
+  }
+  return null;
+}
+function toSecondary(ex,p){var a=D.scales&&D.scales[ex],v=a&&a[p];return typeof v==="number"?v:null;}
+function fmtNum(x){return String(Math.round(x*10)/10).replace(".",",");}
+function varScore(v){
+  var r=v.result; if(!r)return null;
+  var hasP2=(v.part2||[]).length>0, p2=typeof v.p2==="number"?v.p2:null, pending=hasP2&&p2==null;
+  // в балл идёт первая попытка; следующие попытки — работа над ошибками
+  return {p1:r.first,total:r.total,fix:r.count>1?r.best:null,tries:r.count,hasP2:hasP2,p2:p2,pending:pending,primary:pending?null:r.first+(hasP2?p2:0)};
+}
+function renderVarStats(){
+  var vs=(D.variants||[]).filter(function(v){return v.result;});
+  if(!vs.length)return "";
+  var sets=[]; vs.forEach(function(v){var st=v.set||"";if(sets.indexOf(st)<0)sets.push(st);});
+  var EX={ege:"ЕГЭ",oge:"ОГЭ"};
+  var h='<section class="panel"><h2>Результаты по вариантам</h2>'+sets.map(function(st){
+    var items=vs.filter(function(v){return (v.set||"")===st;}).map(function(v){
+      var sc=varScore(v), ex=examFor(v), tv=(ex&&sc.primary!=null)?toSecondary(ex,sc.primary):null;
+      return {v:v,sc:sc,ex:ex,tv:tv};
+    });
+    var exs=[]; items.forEach(function(it){if(it.ex&&exs.indexOf(it.ex)<0)exs.push(it.ex);});
+    var anyEx=exs.length>0;
+    var prim=items.filter(function(it){return it.sc.primary!=null;}).map(function(it){return it.sc.primary;});
+    var sec=items.filter(function(it){return it.tv!=null;}).map(function(it){return it.tv;});
+    var body=items.map(function(it){
+      var sc=it.sc;
+      return '<tr><td>'+esc(it.v.title)+'</td><td>'+sc.p1+' из '+sc.total+
+        (sc.fix!=null?'<span class="vs-fix">работа над ошибками: '+sc.fix+' из '+sc.total+'</span>':'')+'</td>'+
+        '<td>'+(!sc.hasP2?'—':sc.pending?'<span class="chip wait">ждёт проверки</span>':sc.p2)+'</td>'+
+        '<td>'+(sc.primary==null?'—':sc.primary)+'</td>'+
+        (anyEx?'<td class="vs-big">'+(it.tv==null?'—':it.tv)+'</td>':'')+'</tr>';
+    }).join("");
+    var sum=prim.length?'Средний первичный балл: '+fmtNum(prim.reduce(function(a,b){return a+b;},0)/prim.length)+
+      (sec.length?' · средний балл по шкале: '+fmtNum(sec.reduce(function(a,b){return a+b;},0)/sec.length)+' · лучший: '+Math.max.apply(null,sec):""):"";
+    return '<h3 class="vs-h">'+esc(st||"Другие варианты")+(exs.length===1?'<span class="chip star">'+EX[exs[0]]+'</span>':'')+'</h3>'+
+      '<div class="vs-wrap"><table class="vs-t"><thead><tr><th scope="col">Вариант</th><th scope="col">Часть 1</th><th scope="col">Часть 2</th><th scope="col">Первичный</th>'+
+      (anyEx?'<th scope="col">По шкале</th>':'')+'</tr></thead><tbody>'+body+'</tbody></table></div>'+
+      (sum?'<p class="vs-sum">'+sum+'</p>':'');
+  }).join("")+'<p class="hint" style="margin-top:12px">В первичный балл идёт первая попытка по части 1. Следующие попытки считаются работой над ошибками и в балл не входят. Первичный балл — сумма за обе части, баллы за часть 2 ставит преподаватель. Выбор периода на эти результаты не влияет.</p></section>';
   return h;
 }
 
