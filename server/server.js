@@ -498,7 +498,7 @@ function studentPayload(tok) {
       .filter(c => (c.data.groups || []).some(id => gids.has(id)))
       .sort((a, b) => (a.data.order || 0) - (b.data.order || 0))
       .map(c => ({ id: c.id, name: c.data.name || 'Задания', tasks: (c.data.tasks || []).map(t => ({
-        n: String(t.n || ''), title: t.title || '', materials: t.materials || [], practice: t.practice || [] })) })),
+        n: String(t.n || ''), title: t.title || '', materials: t.materials || [], practice: t.practice || [], full: Array.isArray(t.full) ? t.full : [] })) })),
     lessons, groupAvg: avg, groupAvgByMonth: avgByMonth, scales: publicScales(),
   };
 }
