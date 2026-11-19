@@ -418,6 +418,12 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .arch-list li{display:list-item}
 .arch-row{display:flex;gap:8px;align-items:center}
 .arch-name{flex:1;color:var(--muted)}
+/* картинки в банке заданий */
+.cat-gal{display:flex;flex-wrap:wrap;gap:12px}
+.cat-fig{margin:0;max-width:100%;display:flex;flex-direction:column;gap:4px}
+.cat-fig img{max-width:min(100%,640px);max-height:480px;width:auto;height:auto;border:1px solid var(--line);border-radius:8px;background:#fff;display:block}
+.cat-zoom{border:none;background:none;padding:0;cursor:zoom-in;max-width:100%;text-align:left}
+.cat-cap{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 /* шкала перевода баллов и баллы за 2-ю часть */
 .sc-exam{margin-top:16px}.sc-exam h3{margin:0 0 8px;font-size:15px}
 .sc-grid{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
@@ -2012,21 +2018,46 @@ function renderCatalog(){
       :'<button class="btn danger" data-action="cat-del">Удалить раздел</button>')+'</div>';
   return h;
 }
+function catIsImg(m){return m.kind!=="link"&&/^image\//.test(m.type||"")&&!/hei[cf]/i.test(m.type||"");}
+// «Оформление на полный балл» нужно номерам 2 части ЕГЭ (13–19); в разделах ОГЭ его нет
+function catHasFull(cat,t){
+  if((t.full||[]).length)return true;
+  if(/огэ/i.test(cat.name||""))return false;
+  return catTaskNums(t.n).some(function(x){return x>=13&&x<=19;});
+}
+// картинки показываем сразу, остальные файлы и ссылки — строкой
+function catItemsHtml(t,w,emptyText){
+  var arr=t[w]||[]; if(!arr.length)return '<p class="hint">'+emptyText+'</p>';
+  var imgs="", rest="";
+  arr.forEach(function(m,k){
+    var del='<button class="x" data-action="cat-item-del" data-t="'+esc(t.id)+'" data-w="'+w+'" data-i="'+k+'" aria-label="Убрать">×</button>';
+    if(catIsImg(m)){
+      imgs+='<figure class="cat-fig"><button type="button" class="cat-zoom" data-action="cat-open-file" data-t="'+esc(t.id)+'" data-w="'+w+'" data-i="'+k+'" title="Открыть крупно">'+
+        '<img src="'+esc(m.url||("/_blob/"+m.id))+'" alt="'+esc(m.name)+'" loading="lazy"></button>'+
+        '<figcaption class="cat-cap"><span>'+esc(m.name)+'</span>'+del+'</figcaption></figure>';
+    } else {
+      rest+='<span class="cat-item">'+(m.url&&m.kind==="link"?'<a href="'+esc(m.url)+'" target="_blank" rel="noopener noreferrer">'+esc(m.name||m.url)+'</a>':
+        '<button class="link" data-action="cat-open-file" data-t="'+esc(t.id)+'" data-w="'+w+'" data-i="'+k+'">'+esc(m.name)+'</button>')+del+'</span>';
+    }
+  });
+  return (imgs?'<div class="cat-gal">'+imgs+'</div>':'')+(rest?'<div class="cat-items">'+rest+'</div>':'');
+}
 function renderCatTask(cat,t,ti){
   var ls=catLessons(cat,t), open=!!CT.open[t.id], mats=t.materials||[], prs=t.practice||[];
   var h='<article class="cat-task'+(open?' open':'')+'"><button class="cat-row" data-action="cat-toggle" data-t="'+esc(t.id)+'" aria-expanded="'+open+'">'+
     '<span class="cat-n">'+esc(t.n||"?")+'</span><span class="cat-title">'+esc(t.title||"Без названия")+'</span>'+
-    '<span class="cat-meta">'+[mats.length?mats.length+' матер.':'',prs.length?prs.length+' трен.':'',ls.length?ls.length+' '+plural(ls.length,"урок","урока","уроков"):''].filter(Boolean).join(" · ")+'</span>'+
+    '<span class="cat-meta">'+[mats.length?mats.length+' матер.':'',prs.length?prs.length+' трен.':'',(t.full||[]).length?(t.full.length+' оформл.'):'',ls.length?ls.length+' '+plural(ls.length,"урок","урока","уроков"):''].filter(Boolean).join(" · ")+'</span>'+
     '<span class="cat-chev" aria-hidden="true">'+(open?'▴':'▾')+'</span></button>';
   if(!open)return h+'</article>';
   h+='<div class="cat-body"><div class="cat-fields"><div class="field" style="max-width:110px"><label for="tn-'+t.id+'">Номер</label><input type="text" id="tn-'+t.id+'" data-tn="'+esc(t.id)+'" value="'+esc(t.n||"")+'"></div>'+
     '<div class="field" style="flex:1"><label for="tt-'+t.id+'">Название</label><input type="text" id="tt-'+t.id+'" data-tt="'+esc(t.id)+'" value="'+esc(t.title||"")+'"></div></div>';
   // материалы
-  h+='<div class="cat-sec"><div class="label">Материалы</div>'+(mats.length?'<div class="cat-items">'+mats.map(function(m,k){
-      return '<span class="cat-item">'+(m.url&&m.kind==="link"?'<a href="'+esc(m.url)+'" target="_blank" rel="noopener noreferrer">'+esc(m.name||m.url)+'</a>':'<button class="link" data-action="cat-open-file" data-t="'+esc(t.id)+'" data-i="'+k+'">'+esc(m.name)+'</button>')+
-        '<button class="x" data-action="cat-item-del" data-t="'+esc(t.id)+'" data-w="materials" data-i="'+k+'" aria-label="Убрать">×</button></span>';}).join("")+'</div>':'<p class="hint">Пока пусто.</p>')+
+  h+='<div class="cat-sec"><div class="label">Материалы</div>'+catItemsHtml(t,"materials","Пока пусто.")+
     '<div class="cat-btns">'+(S.assets?'<label class="btn ghost" for="cf-'+t.id+'" style="cursor:pointer">Прикрепить файл</label><input type="file" id="cf-'+t.id+'" data-catfile="'+esc(t.id)+'" multiple accept="image/*,application/pdf,.pdf" hidden>':'')+
     '<button class="btn ghost" data-action="cat-form" data-t="'+esc(t.id)+'" data-w="materials">Добавить ссылку</button></div>'+catUpStatus(t.id)+catForm(t,"materials")+'</div>';
+  // оформление на полный балл (номера 13–19)
+  if(catHasFull(cat,t))h+='<div class="cat-sec"><div class="label">Оформление на полный балл</div>'+catItemsHtml(t,"full","Пока пусто. Добавьте картинки с образцом оформления.")+
+    '<div class="cat-btns">'+(S.assets?'<label class="btn ghost" for="cff-'+t.id+'" style="cursor:pointer">Добавить картинки</label><input type="file" id="cff-'+t.id+'" data-catfile="'+esc(t.id)+'" data-catw="full" multiple accept="image/*,application/pdf,.pdf" hidden>':'')+'</div>'+catUpStatus(t.id+":full")+'</div>';
   // тренировка
   h+='<div class="cat-sec"><div class="label">Потренироваться</div>'+(prs.length?'<div class="cat-items">'+prs.map(function(m,k){
       return '<span class="cat-item"><a href="'+esc(m.url)+'" target="_blank" rel="noopener noreferrer">'+esc(m.name||m.url)+'</a><button class="x" data-action="cat-item-del" data-t="'+esc(t.id)+'" data-w="practice" data-i="'+k+'" aria-label="Убрать">×</button></span>';}).join("")+'</div>':'<p class="hint">Добавьте ссылки на задания с автопроверкой.</p>')+
@@ -2060,7 +2091,7 @@ function catAction(a,d,b){
     case "cat-task-add": {var nt={id:rid(),n:"",title:"",materials:[],practice:[]};cat.tasks=(cat.tasks||[]).concat([nt]);CT.open[nt.id]=true;saveCat(cat);render();
       var el=document.getElementById("tn-"+nt.id);if(el){el.focus();el.scrollIntoView({block:"center"});}return true;}
     case "cat-task-del": cat.tasks=cat.tasks.filter(function(x){return x.id!==d.t;});
-      (t&&t.materials||[]).forEach(function(m){if(m.id&&S.assets)S.assets.delete(m.id).catch(function(){});});
+      ((t&&t.materials)||[]).concat((t&&t.full)||[]).forEach(function(m){if(m.id&&S.assets)S.assets.delete(m.id).catch(function(){});});
       saveCat(cat);render();return true;
     case "cat-del": CT.delCat=true; render(); return true;
     case "cat-del-no": CT.delCat=false; render(); return true;
@@ -2074,7 +2105,7 @@ function catAction(a,d,b){
       t[d.w]=(t[d.w]||[]).concat([{kind:"link",name:lab||hostOf(url),url:url}]); CT.form=null; saveCat(cat); render(); return true;}
     case "cat-item-del": {var it=t[d.w][+d.i]; if(it&&it.id&&S.assets)S.assets.delete(it.id).catch(function(){});
       t[d.w]=t[d.w].filter(function(x,k){return k!==+d.i;}); saveCat(cat); render(); return true;}
-    case "cat-open-file": {var fl=(t.materials||[]).filter(function(m){return m.kind!=="link";});var fm=t.materials[+d.i];
+    case "cat-open-file": {var arr0=t[d.w||"materials"]||[];var fl=arr0.filter(function(m){return m.kind!=="link";});var fm=arr0[+d.i];
       V={files:fl,i:Math.max(0,fl.indexOf(fm))};renderViewer();return true;}
   }
   return false;
@@ -2091,18 +2122,19 @@ function catChange(tg){
   if(tg.dataset.catg){var gs=(cat.groups||[]).filter(function(x){return x!==tg.dataset.catg;});if(tg.checked)gs.push(tg.dataset.catg);cat.groups=gs;saveCat(cat);render();return true;}
   if(tg.dataset.catfile&&tg.files&&tg.files.length){
     var catId=cat.id, tid=tg.dataset.catfile, list=Array.prototype.slice.call(tg.files); tg.value="";
-    var st=CT.up[tid]={total:list.length,done:0,errs:[]}; render();
+    var w=tg.dataset.catw||"materials", upKey=w==="materials"?tid:tid+":"+w;
+    var st=CT.up[upKey]={total:list.length,done:0,errs:[]}; render();
     (function next(k){
       if(k>=list.length){
         st.finished=true; render();
-        if(!st.errs.length)setTimeout(function(){if(CT.up[tid]===st){delete CT.up[tid];render();}},4000);
+        if(!st.errs.length)setTimeout(function(){if(CT.up[upKey]===st){delete CT.up[upKey];render();}},4000);
         return;
       }
       var file=list[k];
       if(file.size>25*1048576){st.errs.push("«"+file.name+"» — больше 25 МБ");st.done++;render();return next(k+1);}
       S.assets.upload(file).then(function(r){
         var c=catById(catId), t=c&&catTask(c,tid);   // берём свежие данные: страница могла обновиться
-        if(t){t.materials=(t.materials||[]).concat([{kind:"file",id:r.id,url:r.url||("/_blob/"+r.id),name:file.name,type:r.contentType||file.type}]);saveCat(c);}
+        if(t){t[w]=(t[w]||[]).concat([{kind:"file",id:r.id,url:r.url||("/_blob/"+r.id),name:file.name,type:r.contentType||file.type}]);saveCat(c);}
         st.done++; render(); next(k+1);
       },function(e){st.errs.push("«"+file.name+"» — "+(e&&e.message||"ошибка"));st.done++;render();next(k+1);});
     })(0);
