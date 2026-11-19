@@ -699,6 +699,23 @@ function route(){
 }
 window.addEventListener("hashchange",route);
 
+/* ---------- фото HEIC (с iPhone): переводим в JPEG перед отправкой ---------- */
+var heicP=null;
+function isHeic(f){return /^image\/hei[cf]$/i.test(f.type||"")||/\.hei[cf]$/i.test(f.name||"");}
+function heicLib(){
+  if(!heicP)heicP=new Promise(function(res,rej){
+    var s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js";
+    s.onload=function(){res(window.heic2any);}; s.onerror=function(){heicP=null;rej(new Error("lib"));};
+    document.head.appendChild(s);
+  });
+  return heicP;
+}
+function heicToJpeg(file){
+  return heicLib().then(function(h){return h({blob:file,toType:"image/jpeg",quality:0.85});}).then(function(o){
+    var b=Array.isArray(o)?o[0]:o;
+    return new File([b],(file.name||"фото").replace(/\.[^.]+$/,"")+".jpg",{type:"image/jpeg"});
+  });
+}
 /* ---------- редактор фото перед отправкой ---------- */
 var ED=null; // {lid, items:[{file,img,rot,crop:{x,y,w,h},scan}], i, extra:[файлы без редактора], base, disp}
 function loadImg(file){
@@ -710,6 +727,14 @@ function loadImg(file){
   });
 }
 function openEditor(lid,list){
+  var arr=Array.prototype.slice.call(list,0,20);
+  if(!arr.some(isHeic)){openEditorFiles(lid,arr);return;}
+  UP[lid]="Подготавливаю фото…"; keepScroll(render);
+  Promise.all(arr.map(function(f){return isHeic(f)?heicToJpeg(f).catch(function(){return f;}):f;})).then(function(fs){
+    delete UP[lid]; keepScroll(render); openEditorFiles(lid,fs);
+  });
+}
+function openEditorFiles(lid,list){
   var files=Array.prototype.slice.call(list,0,20), imgs=[], extra=[];
   files.forEach(function(f){(/^image\/(jpeg|png|webp)$/.test(f.type)?imgs:extra).push(f);});
   if(!imgs.length){sendFiles(lid,extra);return;}
