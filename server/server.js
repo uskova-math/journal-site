@@ -314,6 +314,10 @@ function publicSub(d) {
   const fb = d.fb && d.fb.at ? { text: String(d.fb.text || ''), files: Array.isArray(d.fb.files) ? d.fb.files : [], audio: d.fb.audio || null, at: d.fb.at } : null;
   return { files: d.files || [], comment: d.comment || '', updated: d.updated || 0, seen: !!d.seenAt && d.seenAt >= (d.updated || 0), fb };
 }
+// ученик в архиве: данные хранятся, но доступ к кабинету закрыт
+function isArchived(sid) {
+  return allDocs('groups').some(g => (Array.isArray(g.data.archived) ? g.data.archived : []).some(s => s && s.id === sid));
+}
 function studentCtx(tok) {
   const row = Q.linkByTok.get(tok);
   if (!row) return null;
@@ -650,7 +654,10 @@ async function handle(req, res) {
   }
   if ((mm = /^\/api\/s\/([A-Za-z0-9_-]{10,64})$/.exec(p)) && m === 'GET') {
     const data = studentPayload(mm[1]);
-    return data ? json(res, 200, data) : json(res, 404, { error: 'Ссылка не найдена.' });
+    if (data) return json(res, 200, data);
+    const lrow = Q.linkByTok.get(mm[1]);
+    if (lrow && isArchived(lrow.student_id)) return json(res, 403, { error: 'Доступ закрыт.', archived: true });
+    return json(res, 404, { error: 'Ссылка не найдена.' });
   }
 
   /* --- дальше только для учителя --- */
