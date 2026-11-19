@@ -413,6 +413,11 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .hw-tag.new{background:var(--ink);color:var(--on-ink)}.hw-tag.ok{color:var(--ok)}
 .hwc-foot{margin-top:10px}
 .v-task{padding:10px 14px;border-bottom:1px solid var(--line);max-height:34vh;overflow:auto;font-size:14px}
+/* архив учеников */
+.arch-list{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px}
+.arch-list li{display:list-item}
+.arch-row{display:flex;gap:8px;align-items:center}
+.arch-name{flex:1;color:var(--muted)}
 /* шкала перевода баллов и баллы за 2-ю часть */
 .sc-exam{margin-top:16px}.sc-exam h3{margin:0 0 8px;font-size:15px}
 .sc-grid{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
@@ -1409,7 +1414,7 @@ function deleteLesson(){
 
 /* ---------- окно групп ---------- */
 function lessonSnap(){return JSON.stringify([M.date,M.topic,M.hw,!!M.noHw,String(M.count||""),String(M.labels||""),M.files.map(function(f){return f.id;}),M.video,M.board.map(function(f){return f.id;})]);}
-function groupsSnap(){return JSON.stringify(M.groups.map(function(g){return [g.id,g.name,!!g.deleted,g.students.map(function(s){return [s.id,s.name];})];}));}
+function groupsSnap(){return JSON.stringify(M.groups.map(function(g){return [g.id,g.name,!!g.deleted,g.students.map(function(s){return [s.id,s.name];}),(g.archived||[]).map(function(s){return s.id;})];}));}
 function tryClose(){
   if(!M)return;
   if(M.kind!=="lesson"&&M.kind!=="groups"){if(!M.busy)closeModal();return;}
@@ -1426,7 +1431,7 @@ function tryClose(){
   div.scrollIntoView({block:"nearest"});
 }
 function openGroups(){
-  M={kind:"groups",groups:S.groups.map(function(g){return {id:g.id,name:g.name||"",students:(g.students||[]).map(function(s){return {id:s.id,name:s.name};}),isNew:false,deleted:false,confirm:false};})};
+  M={kind:"groups",groups:S.groups.map(function(g){return {id:g.id,name:g.name||"",students:(g.students||[]).map(function(s){return {id:s.id,name:s.name};}),archived:(g.archived||[]).map(function(s){return {id:s.id,name:s.name,at:s.at||0};}),isNew:false,deleted:false,confirm:false};})};
   if(!M.groups.length)M.groups.push({id:"g"+rid(),name:"Группа 1",students:[{id:"s"+rid(),name:""}],isNew:true,deleted:false,confirm:false});
   M.init=groupsSnap();
   renderGroups();
@@ -1439,19 +1444,39 @@ function renderGroups(focusSel){
       var n=S.lessons.filter(function(l){return l.groupId===g.id;}).length;
       return '<section class="g-edit"><div class="field"><label for="gn-'+g.id+'">Название группы</label><input type="text" id="gn-'+g.id+'" data-gname="'+g.id+'" value="'+esc(g.name)+'"></div>'+
         '<span class="flabel">Ученики</span><ol>'+g.students.map(function(s,si){
-          return '<li><div class="s-line"><input type="text" id="sn-'+s.id+'" data-g="'+g.id+'" data-sname="'+s.id+'" value="'+esc(s.name)+'" placeholder="Имя ученика" aria-label="Имя ученика"><button class="x mv" data-action="s-up" data-g="'+g.id+'" data-s="'+s.id+'" aria-label="Поднять выше" title="Выше"'+(si===0?' disabled':'')+'>↑</button><button class="x mv" data-action="s-down" data-g="'+g.id+'" data-s="'+s.id+'" aria-label="Опустить ниже" title="Ниже"'+(si===g.students.length-1?' disabled':'')+'>↓</button><button class="x" data-action="s-del" data-g="'+g.id+'" data-s="'+s.id+'">Убрать</button></div></li>';
-        }).join("")+'</ol>'+
+          return '<li><div class="s-line"><input type="text" id="sn-'+s.id+'" data-g="'+g.id+'" data-sname="'+s.id+'" value="'+esc(s.name)+'" placeholder="Имя ученика" aria-label="Имя ученика"><button class="x mv" data-action="s-up" data-g="'+g.id+'" data-s="'+s.id+'" aria-label="Поднять выше" title="Выше"'+(si===0?' disabled':'')+'>↑</button><button class="x mv" data-action="s-down" data-g="'+g.id+'" data-s="'+s.id+'" aria-label="Опустить ниже" title="Ниже"'+(si===g.students.length-1?' disabled':'')+'>↓</button><button class="x" data-action="s-arch" data-g="'+g.id+'" data-s="'+s.id+'" title="Закрыть доступ и убрать из журнала, данные сохранятся">В архив</button><button class="x" data-action="s-del" data-g="'+g.id+'" data-s="'+s.id+'">Убрать</button></div></li>';
+        }).join("")+'</ol>'+archHtml(g)+
         '<div class="g-foot"><button class="link" data-action="s-add" data-g="'+g.id+'">+ Добавить ученика</button>'+
         (g.confirm?'<div class="confirm">Удалить группу'+(n?' и её '+n+' '+plural(n,"занятие","занятия","занятий"):'')+'?<button class="btn" style="background:var(--miss);border-color:var(--miss)" data-action="g-del-yes" data-g="'+g.id+'">Удалить</button><button class="link" data-action="g-del-no" data-g="'+g.id+'">Не удалять</button></div>'
           :'<button class="btn danger" data-action="g-del" data-g="'+g.id+'">Удалить группу</button>')+'</div></section>';
     }).join("")+
     '<div><button class="btn ghost" data-action="g-add">+ Добавить группу</button></div>'+
-    '<p class="hint">Если убрать ученика из списка, его старые отметки скроются из журнала.</p>'+
+    '<p class="hint"><b>В архив</b> — для тех, кто перестал заниматься: ученик пропадает из журнала, его ссылка перестаёт работать, а все отметки и работы сохраняются. В разделе «В архиве» его можно вернуть. <b>Убрать</b> — просто стереть из списка, вернуть данные потом не получится.</p>'+
     '<div class="m-actions"><span class="spacer"></span><button class="btn ghost" data-action="m-close">Отмена</button><button class="btn" data-action="g-save">Сохранить</button></div></div></div>';
   $("#modal").innerHTML=h;
   if(focusSel){var el=$(focusSel);if(el)el.focus();}
 }
 function gFind(id){return M.groups.filter(function(g){return g.id===id;})[0];}
+function archStudent(gid,sid){
+  var g=gFind(gid); if(!g)return;
+  if(!g.archived)g.archived=[];
+  var s=g.students.filter(function(x){return x.id===sid;})[0]; if(!s)return;
+  if(s.name.trim())g.archived.push({id:s.id,name:s.name.trim(),at:Date.now()});
+  g.students=g.students.filter(function(x){return x.id!==sid;});
+}
+function restoreStudent(gid,sid){
+  var g=gFind(gid); if(!g||!g.archived)return;
+  var s=g.archived.filter(function(x){return x.id===sid;})[0]; if(!s)return;
+  g.archived=g.archived.filter(function(x){return x.id!==sid;});
+  g.students.push({id:s.id,name:s.name});
+}
+function archHtml(g){
+  var a=g.archived||[]; if(!a.length)return "";
+  return '<span class="flabel">В архиве</span><ul class="arch-list">'+a.map(function(s){
+    return '<li><div class="arch-row"><span class="arch-name">'+esc(s.name)+'</span>'+
+      '<button class="x" data-action="s-restore" data-g="'+g.id+'" data-s="'+s.id+'" title="Вернуть в группу вместе со всеми результатами">Вернуть</button></div></li>';
+  }).join("")+'</ul>';
+}
 function saveGroups(){
   var order=0;
   M.groups.forEach(function(g){
@@ -1468,7 +1493,8 @@ function saveGroups(){
       return;
     }
     var body={name:g.name.trim()||("Группа "+(order+1)),order:order++,
-      students:g.students.filter(function(s){return s.name.trim();}).map(function(s){return {id:s.id,name:s.name.trim()};})};
+      students:g.students.filter(function(s){return s.name.trim();}).map(function(s){return {id:s.id,name:s.name.trim()};}),
+      archived:(g.archived||[]).map(function(s){return {id:s.id,name:s.name,at:s.at||0};})};
     var ex=S.groups.filter(function(x){return x.id===g.id;})[0];
     if(ex)S.groups[S.groups.indexOf(ex)]=Object.assign({id:g.id},body); else S.groups.push(Object.assign({id:g.id},body));
     write("groups/"+g.id,function(){return S.db.doc("groups/"+g.id).set(body);});
@@ -1549,6 +1575,8 @@ document.addEventListener("click",function(e){
     case "g-del-no": gFind(d.g).confirm=false; renderGroups(); break;
     case "g-del-yes": gFind(d.g).deleted=true; renderGroups(); break;
     case "s-add": {var ns={id:"s"+rid(),name:""}; gFind(d.g).students.push(ns); renderGroups("#sn-"+ns.id); break;}
+    case "s-arch": archStudent(d.g,d.s); renderGroups(); break;
+    case "s-restore": restoreStudent(d.g,d.s); renderGroups(); break;
     case "s-del": {var gg=gFind(d.g); gg.students=gg.students.filter(function(s){return s.id!==d.s;}); renderGroups(); break;}
     case "g-save": saveGroups(); break;
     case "links": openLinks(); break;
