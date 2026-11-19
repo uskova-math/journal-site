@@ -712,6 +712,45 @@ function pdfLib(){
   return pdfReady;
 }
 function getBlob(f){return fetch(fileUrl(f),{credentials:"same-origin"}).then(function(r){if(!r.ok)throw new Error(r.status);return r.blob();});}
+/* ---------- фото HEIC (с iPhone): браузеры на Windows их не показывают, переводим в JPEG на лету ---------- */
+var heicReady=null, HEIC_P={}, HEIC_OBJ={}, HEIC_Q=Promise.resolve();
+function heicLib(){
+  if(!heicReady)heicReady=loadScript("https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js").then(function(){return window.heic2any;},function(e){heicReady=null;throw e;});
+  return heicReady;
+}
+function isHeicBytes(buf){
+  var b=new Uint8Array(buf); if(b.length<12)return false;
+  if(String.fromCharCode(b[4],b[5],b[6],b[7])!=="ftyp")return false;
+  return /^(heic|heix|hevc|hevx|heim|heis|mif1|msf1)$/.test(String.fromCharCode(b[8],b[9],b[10],b[11]));
+}
+function heicConvert(f){
+  return getBlob(f).then(function(blob){
+    return blob.slice(0,16).arrayBuffer().then(function(buf){
+      if(!isHeicBytes(buf))throw new Error("not heic");
+      return heicLib().then(function(h){return h({blob:blob,toType:"image/jpeg",quality:0.85});});
+    });
+  }).then(function(o){var b=Array.isArray(o)?o[0]:o, url=URL.createObjectURL(b); HEIC_OBJ[fileUrl(f)]=url; return url;});
+}
+// преобразуем по одному, чтобы страница не зависала, если фото много
+function heicToUrl(f){
+  var u=fileUrl(f); if(HEIC_P[u])return HEIC_P[u];
+  HEIC_P[u]=new Promise(function(res,rej){HEIC_Q=HEIC_Q.then(function(){return heicConvert(f).then(res,rej);}).catch(function(){});});
+  HEIC_P[u].catch(function(e){if(!e||e.message!=="not heic")delete HEIC_P[u];});
+  return HEIC_P[u];
+}
+// картинка не загрузилась: если это HEIC, подменяем её на JPEG
+document.addEventListener("error",function(e){
+  var t=e.target; if(!t||t.tagName!=="IMG"||t.dataset.hf)return;
+  var src=t.getAttribute("src")||""; if(src.indexOf("/_blob/")!==0)return;
+  t.dataset.hf="1";
+  heicToUrl({url:src}).then(function(u){t.src=u;},function(){});
+},true);
+function fixHeicImgs(){
+  var m=document.querySelectorAll('img[src^="/_blob/"]');
+  for(var i=0;i<m.length;i++){var u=HEIC_OBJ[m[i].getAttribute("src")];if(u)m[i].src=u;}
+}
+new MutationObserver(fixHeicImgs).observe(document.body||document.documentElement,{childList:true,subtree:true});
+
 function openFile(lid,i,which){
   var l=findLesson(lid), list=l?(which==="board"?l.board:l.files):null; if(!list||!list[i])return;
   V={files:list,i:+i}; renderViewer();
@@ -987,7 +1026,16 @@ function renderViewer(){
   if(/^image\//.test(t)){
     var img=new Image(); img.alt=f.name; img.className="v-img";
     img.onload=function(){if(V===my){body.innerHTML="";body.appendChild(img);}};
-    img.onerror=function(){if(V===my)body.innerHTML='<p class="err">Картинку не удалось загрузить. Попробуйте обновить страницу.</p>';};
+    img.onerror=function(){
+      if(V!==my)return;
+      body.innerHTML='<p class="muted">Преобразую фото из формата HEIC…</p>';
+      heicToUrl(f).then(function(u){
+        if(V!==my)return;
+        var i2=new Image(); i2.alt=f.name; i2.className="v-img";
+        i2.onload=function(){if(V===my){body.innerHTML="";body.appendChild(i2);}};
+        i2.src=u;
+      },function(){if(V===my)body.innerHTML='<p class="err">Картинку не удалось загрузить. Попробуйте обновить страницу.</p>';});
+    };
     img.src=fileUrl(f);
   } else if(/pdf/.test(t)||/\.pdf$/i.test(f.name)){
     Promise.all([pdfLib(),getBlob(f).then(function(b){return b.arrayBuffer();})]).then(function(r){
