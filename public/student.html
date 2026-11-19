@@ -219,6 +219,7 @@ function hwLabel(l){var st=hwState(l);return st==="wait"&&l.sub&&l.sub.files&&l.
 function load(){
   fetch("/api/s/"+TOKEN,{credentials:"omit"}).then(function(r){
     if(r.status===404)throw new Error("notfound");
+    if(r.status===403)throw new Error("archived");
     if(!r.ok)throw new Error("fail");
     return r.json();
   }).then(function(j){
@@ -227,7 +228,7 @@ function load(){
     route();
     setTimeout(flushPending,500);
   }).catch(function(e){
-    $("#app").innerHTML='<div class="panel empty">'+(e.message==="notfound"?"Ссылка больше не работает. Попросите у преподавателя новую.":"Не получилось загрузить кабинет. Проверьте интернет и обновите страницу.")+'</div>';
+    $("#app").innerHTML='<div class="panel empty">'+(e.message==="archived"?"Доступ к кабинету сейчас закрыт. Если вы снова занимаетесь, напишите преподавателю: он вернёт доступ, и все ваши результаты сохранятся.":e.message==="notfound"?"Ссылка больше не работает. Попросите у преподавателя новую.":"Не получилось загрузить кабинет. Проверьте интернет и обновите страницу.")+'</div>';
   });
 }
 
