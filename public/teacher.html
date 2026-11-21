@@ -329,6 +329,14 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .v-subbar #v-del:empty{display:none}
 .danger-link{color:var(--miss)}
 .v-fb{display:flex;flex-direction:column;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--surface)}
+.v-score{padding:12px 14px;border-block:1px solid var(--line);background:var(--ink-soft)}
+.v-score h3{margin:0 0 8px;font-size:16px}
+.v-score .tks{max-width:none;gap:6px}
+.v-score .tk{min-width:36px;height:36px}
+.v-score .sc-lbl,.v-score [hidden]{display:none}
+.v-score .hint{margin:6px 0 0}
+.v-score .hint:empty{display:none}
+@media (max-width:600px){.v-score .tk{min-width:44px;height:44px}}
 .v-fb-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:15px}.v-fb-h .muted{font-size:13px}
 #fb-text{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:8px 10px;width:100%;resize:vertical;min-height:70px}
 .fb-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.fb-btns .spacer{flex:1}
@@ -497,11 +505,17 @@ function ensureGroup(){
 
 /* ---------- запись: по одной на документ ---------- */
 var queues={};
-function write(path,fn){
+function write(path,fn,onResult){
   var run=function(){return fn().catch(function(e){
     if(e&&e.code==="unavailable")return new Promise(function(r){setTimeout(r,600+Math.random()*600);}).then(fn);
     throw e;});};
-  queues[path]=(queues[path]||Promise.resolve()).then(run).catch(onWriteError);
+  queues[path]=(queues[path]||Promise.resolve()).then(run).then(function(result){
+    if(onResult)onResult(true);
+    return result;
+  },function(e){
+    onWriteError(e);
+    if(onResult)onResult(false);
+  });
   return queues[path];
 }
 function onWriteError(e){
@@ -839,7 +853,7 @@ function hwCard(it){
     '<span class="muted">прислано '+esc(fSubTime.format(new Date(x.updated||Date.now())))+'</span>'+tag+'</div>'+
     '<div class="hwc-grid"><section class="hwc-task">'+taskHtml(taskInfo(it.l,it.v))+'</section>'+
     '<section class="hwc-work"><div class="label">Работа ученика</div>'+work+
-    '<div class="hwc-foot"><button class="btn" data-action="sub-open" data-l="'+esc(x.lessonId)+'" data-s="'+esc(x.studentId)+'">Открыть и ответить</button></div></section></div></article>';
+    '<div class="hwc-foot"><button class="btn" data-action="sub-open" data-l="'+esc(x.lessonId)+'" data-s="'+esc(x.studentId)+'">'+(it.l&&!it.l.noHw?"Открыть и проверить":"Открыть и ответить")+'</button></div></section></div></article>';
 }
 function renderHwPage(){
   var h='<div class="toolbar"><button class="btn ghost" data-action="hw-back">← К журналу</button><h2 style="margin:0">Проверка домашек</h2></div>';
@@ -1017,6 +1031,26 @@ function doSubDel(kind){
   }
   renderViewer(); render();
 }
+function reviewScoreHtml(){
+  var sub=V&&V.sub&&subById(V.sub), lesson=sub&&findLesson(sub.lessonId);
+  if(!lesson||lesson.noHw)return "";
+  var count=hasCount(lesson);
+  return '<section class="v-score" aria-labelledby="v-score-heading"><h3 id="v-score-heading">Засчитанные задачи</h3>'+
+    (count?'<div id="v-score-fields">'+taskScoreHtml(lesson,sub.studentId,"Засчитанные задачи")+'</div>'+
+      '<p class="hint" id="v-score-status" role="status">'+esc(V.scoreStatus||"")+'</p>'+
+      '<button type="button" class="link" id="v-score-retry" data-action="v-score-retry"'+(V.scoreRetry&&S.canWrite?'':' hidden')+'>Повторить сохранение</button>'
+      :'<p class="hint">Чтобы отметить номера, укажите количество задач в карточке занятия.</p>')+'</section>';
+}
+function refreshReviewScore(lesson,sid,button){
+  var fields=$("#v-score-fields");
+  if(!fields)return;
+  var focused=document.activeElement===button, index=button.dataset.i;
+  fields.innerHTML=taskScoreHtml(lesson,sid,"Засчитанные задачи");
+  if(focused){
+    var next=fields.querySelector('[data-i="'+index+'"]');
+    if(next)next.focus({preventScroll:true});
+  }
+}
 function renderViewer(){
   var box=$("#viewer"); if(!V){box.innerHTML="";return;}
   var f=V.files[V.i], n=V.files.length;
@@ -1027,10 +1061,12 @@ function renderViewer(){
     '<button class="btn" data-action="v-close">Закрыть</button></span></div>'+
     (V.note?'<p class="v-note">'+esc(V.note)+'</p>':'')+
     (V.task?'<div class="v-task">'+taskHtml(V.task)+'</div>':'')+
+    '<p class="err" id="v-err"></p><div class="v-body" id="v-body"><p class="muted">Открываю…</p></div>'+
+    reviewScoreHtml()+
+    (V.sub?'<section class="v-fb" id="v-fb" aria-label="Ответ ученику">'+fbPanelHtml()+'</section>':'')+
     (V.sub?'<div class="v-subbar">'+(f.type!=="text/note"?'<button class="link danger-link" data-action="v-del-file">Удалить это фото</button>':'')+
       '<button class="link danger-link" data-action="v-del-all">Удалить всю работу</button><div id="v-del"></div></div>':'')+
-    (V.sub?'<section class="v-fb" id="v-fb" aria-label="Ответ ученику">'+fbPanelHtml()+'</section>':'')+
-    '<p class="err" id="v-err"></p><div class="v-body" id="v-body"><p class="muted">Открываю…</p></div></div></div>';
+    '</div></div>';
   var body=$("#v-body"), my=V;
   var t=f.type||"";
   if(t==="text/note"){body.innerHTML='<p class="muted">Ученик прислал только комментарий, он показан выше.</p>';return;}
@@ -1105,21 +1141,12 @@ function renderLesson(l,g){
   function ob(kind,s,v,label,cls,cur){
     return '<button class="opt '+cls+'" data-action="'+kind+'" data-l="'+esc(l.id)+'" data-s="'+esc(s.id)+'" data-v="'+v+'" aria-pressed="'+(cur===v)+'"'+dis+'>'+label+'</button>';
   }
-  function scoreCell(s){
-    var ok=okOf(l,s.id), sol=solvedOf(l,s.id), b='';
-    for(var i=1;i<=cnt+2;i++){
-      var on=!!sol&&sol.indexOf(i)>=0, lab=taskLabel(l,i,cnt);
-      b+='<button class="tk'+(i>cnt?' star':'')+'" data-action="tsk" data-l="'+esc(l.id)+'" data-s="'+esc(s.id)+'" data-i="'+i+'" aria-pressed="'+on+'" title="'+(i>cnt?'Задача со звёздочкой':'Номер '+esc(lab))+'" aria-label="'+esc(s.name)+': '+(i>cnt?'дополнительная задача':'номер '+esc(lab))+'"'+dis+'>'+esc(lab)+'</button>';
-    }
-    var sum=ok==null?'<span class="tk-sum">0 из '+cnt+'</span>':'<span class="tk-sum sc-t '+scoreCls(ok,cnt)+'"'+(sol?'':' title="Отмечено числом, без номеров"')+'>'+ok+' из '+cnt+'</span>';
-    return '<span class="score tks"><span class="sc-w sc-lbl">засчитаны</span>'+b+sum+'</span>';
-  }
   h+='<div class="marks"><div class="m-head"><span>Ученик</span><span>На занятии</span><span>'+(l.noHw?"":"Домашка")+'</span><span>'+(cnt?"Засчитанные номера":"")+'</span></div>';
   h+=st.map(function(s){var m=mk(l,s.id);
     return '<div class="m-row"><span class="m-name">'+esc(s.name)+(l.noHw?'':subButton(l,s))+'</span>'+
       '<span class="opts att" role="group" aria-label="Присутствие: '+esc(s.name)+'">'+ob("att",s,"y","Был","yes",m.att)+ob("att",s,"n","Не был","no",m.att)+'</span>'+
       (l.noHw?'<span class="hwo"></span>':'<span class="opts hwo" role="group" aria-label="Домашка: '+esc(s.name)+'">'+ob("hw",s,"done","Сдал","yes",m.hw)+ob("hw",s,"part","Частично","half",m.hw)+ob("hw",s,"none","Нет","no",m.hw)+'</span>')+
-      (cnt?scoreCell(s):'<span></span>')+
+      (cnt?taskScoreHtml(l,s.id,"Засчитанные задачи: "+s.name):'<span></span>')+
       '</div>';
   }).join("");
   var unmarked=st.some(function(s){return !mk(l,s.id).att;});
@@ -1133,6 +1160,16 @@ function solvedOf(l,sid){var x=mk(l,sid).solved;return Array.isArray(x)?x:null;}
 function hasCount(l){var n=parseInt(l.count,10);return !l.noHw&&n>0?n:0;}
 function okOf(l,sid){var o=mk(l,sid).ok;var n=hasCount(l);return typeof o==="number"&&n?Math.min(o,n+2):null;}
 function scoreCls(ok,n){if(ok==null||!n)return "";var r=ok/n;return r>1?"star":r>=1?"good":r>=0.5?"mid":"low";}
+function taskScoreHtml(l,sid,label){
+  var cnt=hasCount(l), ok=okOf(l,sid), sol=solvedOf(l,sid), b='', dis=S.canWrite?"":" disabled";
+  for(var i=1;i<=cnt+2;i++){
+    var on=!!sol&&sol.indexOf(i)>=0, lab=taskLabel(l,i,cnt);
+    var name=i>cnt?"Задача со звёздочкой "+(i-cnt):"Номер "+lab;
+    b+='<button type="button" class="tk'+(i>cnt?' star':'')+'" data-action="tsk" data-l="'+esc(l.id)+'" data-s="'+esc(sid)+'" data-i="'+i+'" aria-pressed="'+on+'" title="'+esc(name)+'" aria-label="'+esc(name)+'"'+dis+'>'+esc(lab)+'</button>';
+  }
+  var sum=ok==null?'<span class="tk-sum">0 из '+cnt+'</span>':'<span class="tk-sum sc-t '+scoreCls(ok,cnt)+'"'+(sol?'':' title="Отмечено числом, без номеров"')+'>'+ok+' из '+cnt+'</span>';
+  return '<span class="score tks" role="group" aria-label="'+esc(label)+'"><span class="sc-w sc-lbl">засчитаны</span>'+b+sum+'</span>';
+}
 
 /* ---------- статистика ---------- */
 function studentStats(ls,sid){
@@ -1305,10 +1342,40 @@ function setLocal(l,patch){
   Object.keys(patch).forEach(function(sid){copy.marks[sid]=Object.assign({},copy.marks[sid]||{},patch[sid]);});
   S.lessons[idx]=copy;
 }
-function setMarks(lid,patch){
+function setMarks(lid,patch,onResult){
   var l=findLesson(lid); if(!l||!S.canWrite)return;
   setLocal(l,patch); render();
-  write("lessons/"+lid,function(){return S.db.doc("lessons/"+lid).update({marks:patch});});
+  write("lessons/"+lid,function(){return S.db.doc("lessons/"+lid).update({marks:patch});},onResult);
+}
+function saveReviewScore(viewer,lid,patch){
+  if(!S.canWrite)return;
+  function showStatus(text,retry){
+    viewer.scoreStatus=text;
+    viewer.scoreRetry=retry;
+    var status=$("#v-score-status"); if(status)status.textContent=text;
+    var button=$("#v-score-retry"); if(button)button.hidden=!retry||!S.canWrite;
+  }
+  var revision=(viewer.scoreRevision||0)+1;
+  viewer.scoreRevision=revision;
+  showStatus("Сохраняю…",null);
+  setMarks(lid,patch,function(saved){
+    if(V!==viewer||viewer.scoreRevision!==revision)return;
+    showStatus(saved?"Сохранено в журнале.":"Не удалось сохранить баллы.",saved?null:{lid:lid,patch:patch});
+  });
+}
+function toggleScoredTask(button){
+  var d=button.dataset, l=findLesson(d.l), i=+d.i, count=l&&hasCount(l);
+  if(!count||!S.canWrite||!Number.isInteger(i)||i<1||i>count+2)return;
+  var mark=mk(l,d.s), solved=(solvedOf(l,d.s)||[]).slice(), index=solved.indexOf(i);
+  if(index>=0)solved.splice(index,1); else solved.push(i);
+  solved.sort(function(a,b){return a-b;});
+  var patch={}; patch[d.s]={solved:solved,ok:solved.length};
+  if(!mark.hw&&solved.length)patch[d.s].hw="done";
+
+  var viewer=button.closest("#v-score-fields")&&V;
+  if(!viewer){setMarks(d.l,patch);return;}
+  saveReviewScore(viewer,d.l,patch);
+  refreshReviewScore(findLesson(d.l),d.s,button);
 }
 
 /* ---------- окно занятия ---------- */
@@ -1625,13 +1692,8 @@ document.addEventListener("click",function(e){
       break;}
     case "open-file": openFile(d.l,d.i,d.w); break;
     case "sub-open": openSub(d.l,d.s,d.i); break;
-    case "tsk": {
-      var tl=findLesson(d.l); if(!tl||!S.canWrite)break;
-      var tm=mk(tl,d.s), sol=Array.isArray(tm.solved)?tm.solved.slice():[], ti=+d.i, tk=sol.indexOf(ti);
-      if(tk>=0)sol.splice(tk,1); else sol.push(ti);
-      sol.sort(function(a,b){return a-b;});
-      var tp={}; tp[d.s]={solved:sol,ok:sol.length}; if(!tm.hw&&sol.length)tp[d.s].hw="done";
-      setMarks(d.l,tp); break;}
+    case "tsk": toggleScoredTask(b); break;
+    case "v-score-retry": if(V&&V.scoreRetry)saveReviewScore(V,V.scoreRetry.lid,V.scoreRetry.patch); break;
     case "v-del-file": askSubDel("file"); break;
     case "v-del-all": askSubDel("all"); break;
     case "v-del-no": $("#v-del").innerHTML=""; break;
