@@ -41,10 +41,18 @@ h2{font-size:16px;margin:0 0 10px}
 .file{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:4px 10px 4px 4px;color:var(--text);text-decoration:none;font-size:14px;max-width:100%;cursor:pointer;font:inherit;text-align:left}
 .file:hover{border-color:var(--ink)}
 .file img{width:40px;height:40px;object-fit:cover;border-radius:5px;display:block}
-.mat-gal{display:flex;flex-direction:column;gap:14px;margin-bottom:10px}
-.mat-fig{margin:0}
-.mat-img{max-width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:zoom-in}
-.mat-cap{font-size:13px;color:var(--muted);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mat-gal{min-width:0;margin-bottom:10px}
+.mat-open{display:block;max-width:100%;padding:0;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:zoom-in}
+.mat-open:focus-visible{outline-offset:-3px}
+.mat-img{display:block;max-width:100%;height:auto;border-radius:7px}
+.mat-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;scrollbar-width:none}
+.mat-track::-webkit-scrollbar{display:none}
+.mat-track .mat-open{flex:0 0 100%;min-width:0;height:clamp(260px,60vh,540px);scroll-snap-align:start}
+.mat-track .mat-img{width:100%;height:100%;object-fit:contain}
+.mat-nav{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:8px}
+.mat-nav .btn{display:grid;place-items:center;min-width:44px;min-height:44px;padding:4px;font-size:20px}
+.mat-nav [aria-disabled=true]{opacity:.5;cursor:default}
+.mat-pos{min-width:5ch;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums}
 .file .ext{width:40px;height:40px;border-radius:5px;background:var(--ink-soft);color:var(--ink);display:grid;place-items:center;font-size:11px;font-weight:700;text-transform:uppercase;flex:none}
 .file .fname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
 .lesson{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--ink);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;scroll-margin-top:70px;transition:box-shadow .3s}
@@ -509,16 +517,24 @@ function taskLessons(t){
   return D.lessons.filter(function(l){return l.date<=td&&topicNums(l.topic).some(function(x){return nums.indexOf(x)>=0;});});
 }
 function isImgF(f){return /^image\//.test(f.type||"")&&!/hei[cf]/i.test(f.type||"");}
-// картинки показываем сразу крупно (по нажатию открываются на весь экран), остальное — кнопками
-function mediaList(list){
+function mediaList(list,label){
   list=list||[];
   var imgs=list.filter(isImgF), rest=list.filter(function(f){return !isImgF(f);});
-  return (imgs.length?'<div class="mat-gal">'+imgs.map(function(f){
-      var u=f.url||("/_blob/"+f.id);
-      return '<figure class="mat-fig"><img class="mat-img" src="'+esc(u)+'" alt="'+esc(f.name)+'" data-img="'+esc(u)+'" data-name="'+esc(f.name)+'" loading="lazy">'+
-        '<figcaption class="mat-cap" title="'+esc(f.name)+'">'+esc(f.name)+'</figcaption></figure>';}).join("")+'</div>':"")+
+  var slides=imgs.map(function(f,i){
+    var u=esc(f.url||("/_blob/"+f.id)), name="Изображение"+(imgs.length>1?" "+(i+1)+" из "+imgs.length:"");
+    return '<button class="mat-open" type="button" data-img="'+u+'" data-name="'+name+'" aria-label="Открыть: '+name+'">'+
+      '<img class="mat-img" src="'+u+'" alt="" draggable="false" loading="lazy"></button>';
+  }).join("");
+  if(imgs.length>1)slides='<div class="mat-nav">'+
+    '<button class="btn ghost" type="button" data-mat-step="-1" aria-disabled="true" aria-label="Предыдущее изображение">←</button>'+
+    '<span class="mat-pos" aria-live="polite">1 из '+imgs.length+'</span>'+
+    '<button class="btn ghost" type="button" data-mat-step="1" aria-disabled="false" aria-label="Следующее изображение">→</button></div>'+
+    '<div class="mat-track">'+slides+'</div>';
+  return (slides?'<div class="mat-gal" role="group" aria-label="'+esc(label)+'">'+slides+'</div>':"")+
     (rest.length?'<div class="files">'+rest.map(function(m){
-      return m.kind==="link"?'<a class="file" href="'+esc(m.url)+'" target="_blank" rel="noopener noreferrer"><span class="ext">ссыл</span><span class="fname">'+esc(m.name||m.url)+'</span></a>':fileBtn(m);
+      if(m.kind==="link")return '<a class="file" href="'+esc(m.url)+'" target="_blank" rel="noopener noreferrer"><span class="ext">ссыл</span><span class="fname">'+esc(m.name||m.url)+'</span></a>';
+      if(/^image\//.test(m.type||""))return '<a class="btn ghost" href="'+esc(m.url||("/_blob/"+m.id))+'?download">Скачать изображение</a>';
+      return fileBtn(m);
     }).join("")+'</div>':"");
 }
 function renderTasks(){
@@ -544,8 +560,8 @@ function renderTask(){
   if(!f)return '<div class="panel empty">Номер не найден. <a href="#tasks">Банк заданий</a></div>';
   var t=f.t, ls=taskLessons(t);
   var h='<a class="back" href="#tasks">← Банк заданий</a><header class="task-h"><span class="tt-n big">'+esc(t.n)+'</span><div><div class="muted">'+esc(f.c.name)+'</div><h2 style="margin:0">'+esc(t.title)+'</h2></div></header>';
-  h+='<section class="panel"><h2>Материалы</h2>'+(t.materials.length?mediaList(t.materials):'<p class="empty" style="margin:0">Материалы скоро появятся.</p>')+'</section>';
-  if((t.full||[]).length)h+='<section class="panel"><h2>Оформление на полный балл</h2>'+mediaList(t.full)+'</section>';
+  h+='<section class="panel"><h2>Материалы</h2>'+(t.materials.length?mediaList(t.materials,"Изображения в материалах"):'<p class="empty" style="margin:0">Материалы скоро появятся.</p>')+'</section>';
+  if((t.full||[]).length)h+='<section class="panel"><h2>Оформление на полный балл</h2>'+mediaList(t.full,"Примеры оформления")+'</section>';
   if(t.practice.length)h+='<section class="panel"><h2>Потренироваться</h2><div class="pr-list">'+t.practice.map(function(p){
       return '<a class="btn pr" href="'+esc(p.url)+'" target="_blank" rel="noopener noreferrer">'+esc(p.name||hostOf(p.url))+' <span aria-hidden="true">↗</span></a>';}).join("")+'</div></section>';
   h+='<section class="panel"><h2>Наши занятия по этому номеру</h2>'+(ls.length?'<ul class="t-ls">'+ls.map(function(l){
@@ -985,6 +1001,27 @@ document.addEventListener("input",function(e){
   if(e.target.id!=="q")return;
   var q=e.target.value.trim().toLowerCase();
   document.querySelectorAll("#list .lesson").forEach(function(el){el.style.display=!q||el.textContent.toLowerCase().indexOf(q)>=0?"":"none";});
+});
+
+/* карусель в банке заданий */
+function matIndex(track){
+  return Math.max(0,Math.min(track.children.length-1,Math.round(track.scrollLeft/track.clientWidth)||0));
+}
+document.addEventListener("scroll",function(e){
+  var track=e.target;
+  if(!track.classList||!track.classList.contains("mat-track"))return;
+  var gal=track.closest(".mat-gal"), index=matIndex(track), count=track.children.length;
+  var pos=gal.querySelector(".mat-pos"), status=(index+1)+" из "+count;
+  if(pos.textContent===status)return;
+  pos.textContent=status;
+  gal.querySelector('[data-mat-step="-1"]').setAttribute("aria-disabled",String(index===0));
+  gal.querySelector('[data-mat-step="1"]').setAttribute("aria-disabled",String(index===count-1));
+},true);
+document.addEventListener("click",function(e){
+  var button=e.target.closest("[data-mat-step]");
+  if(!button)return;
+  var track=button.closest(".mat-gal").querySelector(".mat-track");
+  track.scrollLeft=(matIndex(track)+Number(button.dataset.matStep))*track.clientWidth;
 });
 
 /* просмотр картинок */
