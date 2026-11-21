@@ -392,7 +392,8 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .cat-fields input{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:7px 10px;width:100%}
 .cat-sec{display:flex;flex-direction:column;gap:6px}
 .cat-items{display:flex;flex-wrap:wrap;gap:6px}
-.cat-item{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:3px 4px 3px 10px;font-size:14px}
+.cat-item{display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:100%;border:1px solid var(--line);border-radius:8px;padding:3px 4px 3px 10px;font-size:14px}
+.cat-item > :first-child{min-width:0;overflow-wrap:anywhere;white-space:normal;text-align:left}
 .cat-item a{color:var(--ink)}
 .cat-btns{display:flex;gap:8px;flex-wrap:wrap}
 .cat-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--paper);border-radius:8px;padding:8px}
@@ -429,10 +430,12 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .arch-name{flex:1;color:var(--muted)}
 /* картинки в банке заданий */
 .cat-gal{display:flex;flex-wrap:wrap;gap:12px}
-.cat-fig{margin:0;max-width:100%;display:flex;flex-direction:column;gap:4px}
-.cat-fig img{max-width:min(100%,640px);max-height:480px;width:auto;height:auto;border:1px solid var(--line);border-radius:8px;background:#fff;display:block}
+.cat-fig{margin:0;min-width:0;max-width:min(100%,640px);display:flex;flex-direction:column;gap:4px}
+.cat-fig img{max-width:100%;max-height:480px;width:auto;height:auto;border:1px solid var(--line);border-radius:8px;background:#fff;display:block}
 .cat-zoom{border:none;background:none;padding:0;cursor:zoom-in;max-width:100%;text-align:left}
-.cat-cap{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.cat-cap{display:flex;align-items:center;gap:6px;min-width:0;contain:inline-size;font-size:13px;color:var(--muted)}
+.cat-cap > span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cat-cap > .x,.cat-item > .x{flex:none}
 /* шкала перевода баллов и баллы за 2-ю часть */
 .sc-exam{margin-top:16px}.sc-exam h3{margin:0 0 8px;font-size:15px}
 .sc-grid{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
@@ -449,6 +452,15 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .vt-groups{display:flex;gap:4px 14px;flex-wrap:wrap;padding:6px 14px;font-size:14px}
 .vt-tasks{display:flex;flex-direction:column;gap:10px}
 .vt-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.vt-results-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px 16px}
+.vt-results-head h2{min-width:0;margin:0;overflow-wrap:anywhere}
+.vt-result-groups{display:flex;flex-wrap:wrap;min-width:0;max-width:100%;gap:6px}
+.vt-result-groups button{max-width:100%;min-height:36px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);padding:6px 12px;line-height:1.3;font-weight:600;overflow-wrap:anywhere;cursor:pointer}
+.vt-result-groups button[aria-pressed="true"]{border-color:var(--ink);background:var(--ink-soft);color:var(--ink)}
+@media (max-width:640px){
+  .vt-results-head{display:grid;grid-template-columns:minmax(0,1fr)}
+  .vt-result-groups button{min-height:44px}
+}
 .vt-tabs .tab[aria-pressed="true"] .vt-cnt{color:var(--on-ink);opacity:.8}
 .vt-cnt{color:var(--muted);font-weight:400;margin-left:2px}
 .vt-setname{color:var(--muted);font-weight:400;margin-left:6px}
@@ -2175,7 +2187,7 @@ function catItemsHtml(t,w,emptyText){
     if(catIsImg(m)){
       imgs+='<figure class="cat-fig"><button type="button" class="cat-zoom" data-action="cat-open-file" data-t="'+esc(t.id)+'" data-w="'+w+'" data-i="'+k+'" title="Открыть крупно">'+
         '<img src="'+esc(m.url||("/_blob/"+m.id))+'" alt="'+esc(m.name)+'" loading="lazy"></button>'+
-        '<figcaption class="cat-cap"><span>'+esc(m.name)+'</span>'+del+'</figcaption></figure>';
+        '<figcaption class="cat-cap"><span title="'+esc(m.name)+'">'+esc(m.name)+'</span>'+del+'</figcaption></figure>';
     } else {
       rest+='<span class="cat-item">'+(m.url&&m.kind==="link"?'<a href="'+esc(m.url)+'" target="_blank" rel="noopener noreferrer">'+esc(m.name||m.url)+'</a>':
         '<button class="link" data-action="cat-open-file" data-t="'+esc(t.id)+'" data-w="'+w+'" data-i="'+k+'">'+esc(m.name)+'</button>')+del+'</span>';
@@ -2434,8 +2446,8 @@ function renderVariantsT(){
   var g=S.groups.filter(function(x){return x.id===VT.group;})[0]||curGroup()||S.groups[0];
   if(g){
     var gv=vs.filter(function(v){return (v.groups||[]).indexOf(g.id)>=0;});
-    h+='<section class="panel"><div class="plan-head"><h2>Результаты'+(VT.set?' · '+esc(VT.set):'')+'</h2><div class="seg" role="group" aria-label="Группа">'+S.groups.map(function(x){
-      return '<button data-action="vt-group" data-g="'+esc(x.id)+'" aria-pressed="'+(x.id===g.id)+'">'+esc(x.name)+'</button>';}).join("")+'</div></div>';
+    h+='<section class="panel"><div class="vt-results-head"><h2>Результаты'+(VT.set?' · '+esc(VT.set):'')+'</h2><div class="vt-result-groups" role="group" aria-label="Группа">'+S.groups.map(function(x){
+      return '<button type="button" data-action="vt-group" data-g="'+esc(x.id)+'" aria-pressed="'+(x.id===g.id)+'">'+esc(x.name)+'</button>';}).join("")+'</div></div>';
     if(!gv.length)h+='<p class="hint" style="margin-top:8px">Группе «'+esc(g.name)+'» пока не открыт ни один вариант. Отметьте группу у нужных вариантов ниже.</p>';
     else{
       h+='<div class="table-wrap" style="margin-top:10px;overflow-x:auto"><table class="vt-res"><thead><tr><th scope="col">Ученик</th>'+gv.map(function(v){var yy=(/(20\d\d)/.exec(vSet(v))||[])[1];return '<th scope="col" title="'+esc(v.title+(vSet(v)?' · '+vSet(v):''))+'">'+esc(v.title.replace(/^Вариант\s*/,"В"))+'</th>';}).join("")+'</tr></thead><tbody>'+
