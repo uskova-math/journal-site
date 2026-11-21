@@ -191,6 +191,7 @@ h2{font-family:var(--font-display);font-weight:500;font-size:16px;margin:0;text-
 .m-name{font-weight:500;overflow-wrap:anywhere}
 .opts{display:inline-flex;gap:4px}
 .m-foot .link{text-align:left}
+.m-foot .link:disabled{opacity:.45;cursor:default}
 .opt{white-space:nowrap;border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:4px 10px;font-size:14px;cursor:pointer;color:var(--muted)}
 .opt:disabled{cursor:default}
 .opt[aria-pressed="true"].yes{background:var(--ok-soft);border-color:var(--ok);color:var(--ok);font-weight:600}
@@ -329,6 +330,14 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .v-subbar #v-del:empty{display:none}
 .danger-link{color:var(--miss)}
 .v-fb{display:flex;flex-direction:column;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--surface)}
+.v-score{padding:12px 14px;border-block:1px solid var(--line);background:var(--ink-soft)}
+.v-score h3{margin:0 0 8px;font-size:16px}
+.v-score .tks{max-width:none;gap:6px}
+.v-score .tk{min-width:36px;height:36px}
+.v-score .sc-lbl,.v-score [hidden]{display:none}
+.v-score .hint{margin:6px 0 0}
+.v-score .hint:empty{display:none}
+@media (max-width:600px){.v-score .tk{min-width:44px;height:44px}}
 .v-fb-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:15px}.v-fb-h .muted{font-size:13px}
 #fb-text{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:8px 10px;width:100%;resize:vertical;min-height:70px}
 .fb-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.fb-btns .spacer{flex:1}
@@ -383,7 +392,8 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .cat-fields input{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:7px 10px;width:100%}
 .cat-sec{display:flex;flex-direction:column;gap:6px}
 .cat-items{display:flex;flex-wrap:wrap;gap:6px}
-.cat-item{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:3px 4px 3px 10px;font-size:14px}
+.cat-item{display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:100%;border:1px solid var(--line);border-radius:8px;padding:3px 4px 3px 10px;font-size:14px}
+.cat-item > :first-child{min-width:0;overflow-wrap:anywhere;white-space:normal;text-align:left}
 .cat-item a{color:var(--ink)}
 .cat-btns{display:flex;gap:8px;flex-wrap:wrap}
 .cat-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--paper);border-radius:8px;padding:8px}
@@ -420,10 +430,12 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 .arch-name{flex:1;color:var(--muted)}
 /* картинки в банке заданий */
 .cat-gal{display:flex;flex-wrap:wrap;gap:12px}
-.cat-fig{margin:0;max-width:100%;display:flex;flex-direction:column;gap:4px}
-.cat-fig img{max-width:min(100%,640px);max-height:480px;width:auto;height:auto;border:1px solid var(--line);border-radius:8px;background:#fff;display:block}
+.cat-fig{margin:0;min-width:0;max-width:min(100%,640px);display:flex;flex-direction:column;gap:4px}
+.cat-fig img{max-width:100%;max-height:480px;width:auto;height:auto;border:1px solid var(--line);border-radius:8px;background:#fff;display:block}
 .cat-zoom{border:none;background:none;padding:0;cursor:zoom-in;max-width:100%;text-align:left}
-.cat-cap{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.cat-cap{display:flex;align-items:center;gap:6px;min-width:0;contain:inline-size;font-size:13px;color:var(--muted)}
+.cat-cap > span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cat-cap > .x,.cat-item > .x{flex:none}
 /* шкала перевода баллов и баллы за 2-ю часть */
 .sc-exam{margin-top:16px}.sc-exam h3{margin:0 0 8px;font-size:15px}
 .sc-grid{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
@@ -506,11 +518,17 @@ function ensureGroup(){
 
 /* ---------- запись: по одной на документ ---------- */
 var queues={};
-function write(path,fn){
+function write(path,fn,onResult){
   var run=function(){return fn().catch(function(e){
     if(e&&e.code==="unavailable")return new Promise(function(r){setTimeout(r,600+Math.random()*600);}).then(fn);
     throw e;});};
-  queues[path]=(queues[path]||Promise.resolve()).then(run).catch(onWriteError);
+  queues[path]=(queues[path]||Promise.resolve()).then(run).then(function(result){
+    if(onResult)onResult(true);
+    return result;
+  },function(e){
+    onWriteError(e);
+    if(onResult)onResult(false);
+  });
   return queues[path];
 }
 function onWriteError(e){
@@ -691,7 +709,7 @@ function planSave(){
 function hasHwContent(l){return !l.noHw&&(!!String(l.hw||"").trim()||!!(l.files&&l.files.length));}
 function renderDebts(g,ls,futHw){
   var withHw=(futHw||[]).concat(ls.filter(function(l){return !l.noHw;}));
-  var h='<section class="panel" aria-labelledby="debts-t"><div class="debts-head"><h2 id="debts-t">Кто что не сдал</h2>';
+  var h='<section class="panel" id="hw-debts" aria-labelledby="debts-t"><div class="debts-head"><h2 id="debts-t">Кто что не сдал</h2>';
   if(!withHw.length){return h+'</div><p class="muted" style="margin:0">Когда появятся занятия с домашкой, здесь будет видно, от кого её ждать.</p></section>';}
   var rows=(g.students||[]).map(function(s){
     var d=withHw.filter(function(l){return hwState(l,s.id)!=="done";});
@@ -848,7 +866,7 @@ function hwCard(it){
     '<span class="muted">прислано '+esc(fSubTime.format(new Date(x.updated||Date.now())))+'</span>'+tag+'</div>'+
     '<div class="hwc-grid"><section class="hwc-task">'+taskHtml(taskInfo(it.l,it.v))+'</section>'+
     '<section class="hwc-work"><div class="label">Работа ученика</div>'+work+
-    '<div class="hwc-foot"><button class="btn" data-action="sub-open" data-l="'+esc(x.lessonId)+'" data-s="'+esc(x.studentId)+'">Открыть и ответить</button></div></section></div></article>';
+    '<div class="hwc-foot"><button class="btn" data-action="sub-open" data-l="'+esc(x.lessonId)+'" data-s="'+esc(x.studentId)+'">'+(it.l&&!it.l.noHw?"Открыть и проверить":"Открыть и ответить")+'</button></div></section></div></article>';
 }
 function renderHwPage(){
   var h='<div class="toolbar"><button class="btn ghost" data-action="hw-back">← К журналу</button><h2 style="margin:0">Проверка домашек</h2></div>';
@@ -1026,6 +1044,16 @@ function doSubDel(kind){
   }
   renderViewer(); render();
 }
+function reviewScoreHtml(){
+  var sub=V&&V.sub&&subById(V.sub), lesson=sub&&findLesson(sub.lessonId);
+  if(!lesson||lesson.noHw)return "";
+  var count=hasCount(lesson);
+  return '<section class="v-score" aria-labelledby="v-score-heading"><h3 id="v-score-heading">Засчитанные задачи</h3>'+
+    (count?'<div id="v-score-fields">'+taskScoreHtml(lesson,sub.studentId,"Засчитанные задачи")+'</div>'+
+      '<p class="hint" id="v-score-status" role="status">'+esc(V.scoreStatus||"")+'</p>'+
+      '<button type="button" class="link" id="v-score-retry" data-action="v-score-retry"'+(V.scoreRetry&&S.canWrite?'':' hidden')+'>Повторить сохранение</button>'
+      :'<p class="hint">Чтобы отметить номера, укажите количество задач в карточке занятия.</p>')+'</section>';
+}
 function renderViewer(){
   var box=$("#viewer"); if(!V){box.innerHTML="";return;}
   var f=V.files[V.i], n=V.files.length;
@@ -1036,10 +1064,12 @@ function renderViewer(){
     '<button class="btn" data-action="v-close">Закрыть</button></span></div>'+
     (V.note?'<p class="v-note">'+esc(V.note)+'</p>':'')+
     (V.task?'<div class="v-task">'+taskHtml(V.task)+'</div>':'')+
+    '<p class="err" id="v-err"></p><div class="v-body" id="v-body"><p class="muted">Открываю…</p></div>'+
+    reviewScoreHtml()+
+    (V.sub?'<section class="v-fb" id="v-fb" aria-label="Ответ ученику">'+fbPanelHtml()+'</section>':'')+
     (V.sub?'<div class="v-subbar">'+(f.type!=="text/note"?'<button class="link danger-link" data-action="v-del-file">Удалить это фото</button>':'')+
       '<button class="link danger-link" data-action="v-del-all">Удалить всю работу</button><div id="v-del"></div></div>':'')+
-    (V.sub?'<section class="v-fb" id="v-fb" aria-label="Ответ ученику">'+fbPanelHtml()+'</section>':'')+
-    '<p class="err" id="v-err"></p><div class="v-body" id="v-body"><p class="muted">Открываю…</p></div></div></div>';
+    '</div></div>';
   var body=$("#v-body"), my=V;
   var t=f.type||"";
   if(t==="text/note"){body.innerHTML='<p class="muted">Ученик прислал только комментарий, он показан выше.</p>';return;}
@@ -1091,16 +1121,19 @@ function saveFile(){
   });
 }
 
-function renderLesson(l,g){
-  var st=g.students||[];
+function lessonMarksSummary(l,st){
   var present=st.filter(function(s){return mk(l,s.id).att==="y";}).length;
   var done=st.filter(function(s){return mk(l,s.id).hw==="done";}).length;
   var meta="Были "+present+" из "+st.length+(l.noHw?"":" · ДЗ сдали "+done+" из "+st.length);
   var cnt=hasCount(l);
   if(cnt){var sOk=0,sN=0;st.forEach(function(s){var o=okOf(l,s.id);if(o!=null){sOk+=o;sN+=cnt;}});
     meta+=" · в ДЗ "+cnt+" "+plural(cnt,"номер","номера","номеров")+(sN?", верно "+sOk+" из "+sN+" ("+Math.round(sOk/sN*100)+"%)":"");}
+  return meta;
+}
+function renderLesson(l,g){
+  var st=g.students||[], cnt=hasCount(l);
   var h='<article class="lesson" id="l-'+esc(l.id)+'"><div class="l-head"><div><div class="l-date">'+esc(fmtLong(l.date))+'</div>'+
-    (l.topic?'<div class="l-topic">'+esc(l.topic)+'</div>':'')+'<div class="l-meta">'+meta+'</div></div>'+
+    (l.topic?'<div class="l-topic">'+esc(l.topic)+'</div>':'')+'<div class="l-meta">'+lessonMarksSummary(l,st)+'</div></div>'+
     (S.canWrite?'<button class="btn ghost" data-action="edit" data-l="'+esc(l.id)+'">Изменить</button>':'')+'</div>';
   h+=renderRec(l);
   if(l.noHw){h+='<div class="hw"><p class="hw-text muted">Домашки к этому занятию не было</p></div>';}
@@ -1114,25 +1147,16 @@ function renderLesson(l,g){
   function ob(kind,s,v,label,cls,cur){
     return '<button class="opt '+cls+'" data-action="'+kind+'" data-l="'+esc(l.id)+'" data-s="'+esc(s.id)+'" data-v="'+v+'" aria-pressed="'+(cur===v)+'"'+dis+'>'+label+'</button>';
   }
-  function scoreCell(s){
-    var ok=okOf(l,s.id), sol=solvedOf(l,s.id), b='';
-    for(var i=1;i<=cnt+2;i++){
-      var on=!!sol&&sol.indexOf(i)>=0, lab=taskLabel(l,i,cnt);
-      b+='<button class="tk'+(i>cnt?' star':'')+'" data-action="tsk" data-l="'+esc(l.id)+'" data-s="'+esc(s.id)+'" data-i="'+i+'" aria-pressed="'+on+'" title="'+(i>cnt?'Задача со звёздочкой':'Номер '+esc(lab))+'" aria-label="'+esc(s.name)+': '+(i>cnt?'дополнительная задача':'номер '+esc(lab))+'"'+dis+'>'+esc(lab)+'</button>';
-    }
-    var sum=ok==null?'<span class="tk-sum">0 из '+cnt+'</span>':'<span class="tk-sum sc-t '+scoreCls(ok,cnt)+'"'+(sol?'':' title="Отмечено числом, без номеров"')+'>'+ok+' из '+cnt+'</span>';
-    return '<span class="score tks"><span class="sc-w sc-lbl">засчитаны</span>'+b+sum+'</span>';
-  }
   h+='<div class="marks"><div class="m-head"><span>Ученик</span><span>На занятии</span><span>'+(l.noHw?"":"Домашка")+'</span><span>'+(cnt?"Засчитанные номера":"")+'</span></div>';
   h+=st.map(function(s){var m=mk(l,s.id);
-    return '<div class="m-row"><span class="m-name">'+esc(s.name)+(l.noHw?'':subButton(l,s))+'</span>'+
+    return '<div class="m-row" data-student="'+esc(s.id)+'"><span class="m-name">'+esc(s.name)+(l.noHw?'':subButton(l,s))+'</span>'+
       '<span class="opts att" role="group" aria-label="Присутствие: '+esc(s.name)+'">'+ob("att",s,"y","Был","yes",m.att)+ob("att",s,"n","Не был","no",m.att)+'</span>'+
       (l.noHw?'<span class="hwo"></span>':'<span class="opts hwo" role="group" aria-label="Домашка: '+esc(s.name)+'">'+ob("hw",s,"done","Сдал","yes",m.hw)+ob("hw",s,"part","Частично","half",m.hw)+ob("hw",s,"none","Нет","no",m.hw)+'</span>')+
-      (cnt?scoreCell(s):'<span></span>')+
+      (cnt?taskScoreHtml(l,s.id,"Засчитанные задачи: "+s.name):'<span></span>')+
       '</div>';
   }).join("");
   var unmarked=st.some(function(s){return !mk(l,s.id).att;});
-  if(S.canWrite&&unmarked)h+='<div class="m-foot"><button class="link" data-action="allhere" data-l="'+esc(l.id)+'">Отметить остальных как отсутствующих</button></div>';
+  if(S.canWrite)h+='<div class="m-foot"><button class="link" data-action="allhere" data-l="'+esc(l.id)+'"'+(unmarked?'':' disabled')+'>Отметить остальных как отсутствующих</button></div>';
   return h+'</div></article>';
 }
 
@@ -1142,6 +1166,16 @@ function solvedOf(l,sid){var x=mk(l,sid).solved;return Array.isArray(x)?x:null;}
 function hasCount(l){var n=parseInt(l.count,10);return !l.noHw&&n>0?n:0;}
 function okOf(l,sid){var o=mk(l,sid).ok;var n=hasCount(l);return typeof o==="number"&&n?Math.min(o,n+2):null;}
 function scoreCls(ok,n){if(ok==null||!n)return "";var r=ok/n;return r>1?"star":r>=1?"good":r>=0.5?"mid":"low";}
+function taskScoreHtml(l,sid,label){
+  var cnt=hasCount(l), ok=okOf(l,sid), sol=solvedOf(l,sid), b='', dis=S.canWrite?"":" disabled";
+  for(var i=1;i<=cnt+2;i++){
+    var on=!!sol&&sol.indexOf(i)>=0, lab=taskLabel(l,i,cnt);
+    var name=i>cnt?"Задача со звёздочкой "+(i-cnt):"Номер "+lab;
+    b+='<button type="button" class="tk'+(i>cnt?' star':'')+'" data-action="tsk" data-l="'+esc(l.id)+'" data-s="'+esc(sid)+'" data-i="'+i+'" aria-pressed="'+on+'" title="'+esc(name)+'" aria-label="'+esc(name)+'"'+dis+'>'+esc(lab)+'</button>';
+  }
+  var sum=ok==null?'<span class="tk-sum">0 из '+cnt+'</span>':'<span class="tk-sum sc-t '+scoreCls(ok,cnt)+'"'+(sol?'':' title="Отмечено числом, без номеров"')+'>'+ok+' из '+cnt+'</span>';
+  return '<span class="score tks" role="group" aria-label="'+esc(label)+'"><span class="sc-w sc-lbl">засчитаны</span>'+b+sum+'</span>';
+}
 
 /* ---------- статистика ---------- */
 function studentStats(ls,sid){
@@ -1309,15 +1343,130 @@ function renderTable(g,ls){
 
 /* ---------- отметки ---------- */
 function findLesson(id){for(var i=0;i<S.lessons.length;i++)if(S.lessons[i].id===id)return S.lessons[i];return null;}
-function setLocal(l,patch){
-  var idx=S.lessons.indexOf(l), copy=Object.assign({},l,{marks:Object.assign({},l.marks||{})});
+var pendingLessonMarks=Object.create(null), debtsTimer;
+function lessonWithMarks(l,patch){
+  var copy=Object.assign({},l,{marks:Object.assign({},l.marks||{})});
   Object.keys(patch).forEach(function(sid){copy.marks[sid]=Object.assign({},copy.marks[sid]||{},patch[sid]);});
-  S.lessons[idx]=copy;
+  return copy;
 }
-function setMarks(lid,patch){
+function paintTaskScore(box,l,sid){
+  if(!box)return;
+  var sol=solvedOf(l,sid), ok=okOf(l,sid), count=hasCount(l), sum=box.querySelector(".tk-sum");
+  box.querySelectorAll('[data-action="tsk"]').forEach(function(button){
+    button.setAttribute("aria-pressed",String(!!sol&&sol.indexOf(+button.dataset.i)>=0));
+  });
+  if(!sum)return;
+  sum.textContent=(ok==null?0:ok)+" из "+count;
+  sum.className=ok==null?"tk-sum":"tk-sum sc-t "+scoreCls(ok,count);
+  if(ok!=null&&!sol)sum.setAttribute("title","Отмечено числом, без номеров");
+  else sum.removeAttribute("title");
+}
+function paintLessonMarks(l,students){
+  var article=document.getElementById("l-"+l.id), g=curGroup();
+  if(article&&g&&g.id===l.groupId){
+    var st=g.students||[];
+    article.querySelector(".l-meta").textContent=lessonMarksSummary(l,st);
+    var bulk=article.querySelector('[data-action="allhere"]');
+    if(bulk)bulk.disabled=st.every(function(s){return !!mk(l,s.id).att;});
+    article.querySelectorAll(".m-row").forEach(function(row){
+      var sid=row.dataset.student;
+      if(students.indexOf(sid)<0)return;
+      var mark=mk(l,sid);
+      row.querySelectorAll('[data-action="att"],[data-action="hw"]').forEach(function(button){
+        var d=button.dataset;
+        button.setAttribute("aria-pressed",String(mark[d.action]===d.v));
+      });
+      paintTaskScore(row.querySelector(".tks"),l,sid);
+    });
+  }
+  var sub=V&&V.sub&&subById(V.sub);
+  if(sub&&sub.lessonId===l.id&&students.indexOf(sub.studentId)>=0)paintTaskScore($("#v-score-fields"),l,sub.studentId);
+}
+function queueDebtsRefresh(){
+  clearTimeout(debtsTimer);
+  debtsTimer=setTimeout(function(){
+    var panel=$("#hw-debts"), g=curGroup();
+    if(!panel||!g)return;
+    var all=groupLessons(g.id), day=today();
+    panel.outerHTML=renderDebts(g,all.filter(function(l){return l.date<=day;}),
+      all.filter(function(l){return l.date>day&&hasHwContent(l);}));
+  },500);
+}
+function pendingLesson(l,batch){
+  return batch.items.reduce(function(lesson,item){return lessonWithMarks(lesson,item.patch);},l);
+}
+function receiveLessons(next,first){
+  var previous=Object.create(null);
+  S.lessons.forEach(function(l){previous[l.id]=l;});
+  var structureChanged=first||next.length!==S.lessons.length, marked=[];
+  S.lessons=next.map(function(l){
+    var batch=pendingLessonMarks[l.id];
+    if(batch){batch.confirmed=l;l=pendingLesson(l,batch);}
+    var old=previous[l.id];
+    if(!old){structureChanged=true;return l;}
+    var {marks:before,...oldDetails}=old, {marks:after,...newDetails}=l;
+    if(JSON.stringify(oldDetails)!==JSON.stringify(newDetails)){structureChanged=true;return l;}
+    var sids=Array.from(new Set(Object.keys(before||{}).concat(Object.keys(after||{}))));
+    var changed=sids.filter(function(sid){return JSON.stringify(mk(old,sid))!==JSON.stringify(mk(l,sid));});
+    if(changed.length)marked.push({lesson:l,students:changed});
+    return l;
+  });
+  if(structureChanged||(!S.mode&&S.view!=="list"&&marked.length)){render();return;}
+  marked.forEach(function(item){paintLessonMarks(item.lesson,item.students);});
+  if(!S.mode&&marked.length)queueDebtsRefresh();
+}
+function setMarks(lid,patch,onResult){
   var l=findLesson(lid); if(!l||!S.canWrite)return;
-  setLocal(l,patch); render();
-  write("lessons/"+lid,function(){return S.db.doc("lessons/"+lid).update({marks:patch});});
+  var batch=pendingLessonMarks[lid]||(pendingLessonMarks[lid]={confirmed:l,items:[]}), item={patch:patch};
+  batch.items.push(item);
+  var updated=lessonWithMarks(l,patch), students=Object.keys(patch);
+  S.lessons[S.lessons.indexOf(l)]=updated;
+  paintLessonMarks(updated,students);
+  if(!S.mode&&students.some(function(sid){return Object.prototype.hasOwnProperty.call(patch[sid],"hw");}))queueDebtsRefresh();
+  write("lessons/"+lid,function(){return S.db.doc("lessons/"+lid).update({marks:patch});},function(saved){
+    if(saved)batch.confirmed=lessonWithMarks(batch.confirmed,patch);
+    batch.items.splice(batch.items.indexOf(item),1);
+    if(!batch.items.length)delete pendingLessonMarks[lid];
+    if(!saved){
+      var current=findLesson(lid);
+      if(current){
+        var restored=pendingLesson(batch.confirmed,batch);
+        S.lessons[S.lessons.indexOf(current)]=restored;
+        paintLessonMarks(restored,students);
+        if(!S.mode)queueDebtsRefresh();
+      }
+    }
+    if(onResult)onResult(saved);
+  });
+}
+function saveReviewScore(viewer,lid,patch){
+  if(!S.canWrite)return;
+  function showStatus(text,retry){
+    viewer.scoreStatus=text;
+    viewer.scoreRetry=retry;
+    var status=$("#v-score-status"); if(status)status.textContent=text;
+    var button=$("#v-score-retry"); if(button)button.hidden=!retry||!S.canWrite;
+  }
+  var revision=(viewer.scoreRevision||0)+1;
+  viewer.scoreRevision=revision;
+  showStatus("Сохраняю…",null);
+  setMarks(lid,patch,function(saved){
+    if(V!==viewer||viewer.scoreRevision!==revision)return;
+    showStatus(saved?"Сохранено в журнале.":"Не удалось сохранить баллы.",saved?null:{lid:lid,patch:patch});
+  });
+}
+function toggleScoredTask(button){
+  var d=button.dataset, l=findLesson(d.l), i=+d.i, count=l&&hasCount(l);
+  if(!count||!S.canWrite||!Number.isInteger(i)||i<1||i>count+2)return;
+  var mark=mk(l,d.s), solved=(solvedOf(l,d.s)||[]).slice(), index=solved.indexOf(i);
+  if(index>=0)solved.splice(index,1); else solved.push(i);
+  solved.sort(function(a,b){return a-b;});
+  var patch={}; patch[d.s]={solved:solved,ok:solved.length};
+  if(!mark.hw&&solved.length)patch[d.s].hw="done";
+
+  var viewer=button.closest("#v-score-fields")&&V;
+  if(!viewer){setMarks(d.l,patch);return;}
+  saveReviewScore(viewer,d.l,patch);
 }
 
 /* ---------- окно занятия ---------- */
@@ -1634,13 +1783,8 @@ document.addEventListener("click",function(e){
       break;}
     case "open-file": openFile(d.l,d.i,d.w); break;
     case "sub-open": openSub(d.l,d.s,d.i); break;
-    case "tsk": {
-      var tl=findLesson(d.l); if(!tl||!S.canWrite)break;
-      var tm=mk(tl,d.s), sol=Array.isArray(tm.solved)?tm.solved.slice():[], ti=+d.i, tk=sol.indexOf(ti);
-      if(tk>=0)sol.splice(tk,1); else sol.push(ti);
-      sol.sort(function(a,b){return a-b;});
-      var tp={}; tp[d.s]={solved:sol,ok:sol.length}; if(!tm.hw&&sol.length)tp[d.s].hw="done";
-      setMarks(d.l,tp); break;}
+    case "tsk": toggleScoredTask(b); break;
+    case "v-score-retry": if(V&&V.scoreRetry)saveReviewScore(V,V.scoreRetry.lid,V.scoreRetry.patch); break;
     case "v-del-file": askSubDel("file"); break;
     case "v-del-all": askSubDel("all"); break;
     case "v-del-no": $("#v-del").innerHTML=""; break;
@@ -1966,7 +2110,7 @@ function doImport(){
     .catch(function(e){M.busy=false;go.disabled=false;st.textContent="Не получилось: "+e.message;});
 }
 
-window.addEventListener("beforeunload",function(e){if(planDirty()){e.preventDefault();e.returnValue="";}});
+window.addEventListener("beforeunload",function(e){if(planDirty()||Object.keys(pendingLessonMarks).length){e.preventDefault();e.returnValue="";}});
 
 /* ---------- каталог заданий ---------- */
 var CAT_TPL={
@@ -2043,7 +2187,7 @@ function catItemsHtml(t,w,emptyText){
     if(catIsImg(m)){
       imgs+='<figure class="cat-fig"><button type="button" class="cat-zoom" data-action="cat-open-file" data-t="'+esc(t.id)+'" data-w="'+w+'" data-i="'+k+'" title="Открыть крупно">'+
         '<img src="'+esc(m.url||("/_blob/"+m.id))+'" alt="'+esc(m.name)+'" loading="lazy"></button>'+
-        '<figcaption class="cat-cap"><span>'+esc(m.name)+'</span>'+del+'</figcaption></figure>';
+        '<figcaption class="cat-cap"><span title="'+esc(m.name)+'">'+esc(m.name)+'</span>'+del+'</figcaption></figure>';
     } else {
       rest+='<span class="cat-item">'+(m.url&&m.kind==="link"?'<a href="'+esc(m.url)+'" target="_blank" rel="noopener noreferrer">'+esc(m.name||m.url)+'</a>':
         '<button class="link" data-action="cat-open-file" data-t="'+esc(t.id)+'" data-w="'+w+'" data-i="'+k+'">'+esc(m.name)+'</button>')+del+'</span>';
@@ -2412,8 +2556,9 @@ function init(){
       S.loaded.g=true; ensureGroup(); settle(snap.metadata); render();
     },fail);
     db.collection("lessons").onSnapshot(function(snap){
-      S.lessons=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
-      S.loaded.l=true; settle(snap.metadata); render();
+      var first=!S.loaded.l;
+      S.loaded.l=true; settle(snap.metadata);
+      receiveLessons(snap.docs.map(function(d){return Object.assign({id:d.id},d.data());}),first);
     },fail);
     if(window.SITE)db.collection("catalogs").onSnapshot(function(snap){
       S.cats=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());}).sort(function(a,b){return (a.order||0)-(b.order||0);});

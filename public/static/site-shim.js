@@ -25,7 +25,10 @@
 
   /* ---- база ---- */
   var listeners = {};   // коллекция -> [{next, error}]
-  var pending = 0;
+  var sync = {};
+  function collectionSync(coll) {
+    return sync[coll] || (sync[coll] = { pending: 0, writeVersion: 0, request: 0, timer: null });
+  }
   function rid() {
     var a = new Uint8Array(15); crypto.getRandomValues(a);
     return Array.from(a, function (b) { return 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]; }).join('').slice(0, 20);
@@ -37,14 +40,25 @@
     });
     return { docs: list, size: list.length, empty: !list.length, docChanges: function () { return []; }, metadata: { fromCache: false, hasPendingWrites: false } };
   }
-  function refresh(coll, force) {
+  function refresh(coll) {
     var ls = listeners[coll]; if (!ls || !ls.length) return;
-    if (pending && !force) return;
+    var state = collectionSync(coll);
+    if (state.pending) return;
+    var request = ++state.request, version = state.writeVersion;
+    function current() {
+      return !state.pending && request === state.request && version === state.writeVersion;
+    }
     api('GET', '/api/docs/' + coll).then(function (j) {
-      if (pending && !force) return;
-      var s = snapOf(j.docs || []);
-      ls.forEach(function (l) { try { l.next(s); } catch (e) { console.error(e); } });
+      if (!current()) return;
+      var docs = j.docs || [], fingerprint = JSON.stringify(docs), snapshot = null;
+      ls.forEach(function (l) {
+        if (l.fingerprint === fingerprint) return;
+        l.fingerprint = fingerprint;
+        if (!snapshot) snapshot = snapOf(docs);
+        try { l.next(snapshot); } catch (e) { console.error(e); }
+      });
     }, function (e) {
+      if (!current()) return;
       ls.forEach(function (l) { if (!l.ready && l.error) l.error(e); });
     });
   }
@@ -53,10 +67,13 @@
   document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshAll(); });
 
   function write(method, coll, id, data) {
-    pending++;
+    var state = collectionSync(coll);
+    clearTimeout(state.timer);
+    state.pending++;
+    state.writeVersion++;
     return api(method, '/api/docs/' + coll + '/' + id, data).then(function () { return undefined; }).finally(function () {
-      pending--;
-      if (!pending) setTimeout(function () { refresh(coll); }, 250);
+      state.pending--;
+      if (!state.pending) state.timer = setTimeout(function () { refresh(coll); }, 250);
     });
   }
   function docRef(coll, id) {
@@ -82,7 +99,7 @@
         onSnapshot: function (next, error) {
           var l = { next: function (s) { l.ready = true; next(s); }, error: error };
           (listeners[coll] = listeners[coll] || []).push(l);
-          refresh(coll, true);
+          refresh(coll);
           return function () { listeners[coll] = (listeners[coll] || []).filter(function (x) { return x !== l; }); };
         },
       };
