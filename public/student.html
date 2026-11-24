@@ -17,10 +17,9 @@
 .top-intro{min-width:0;overflow-wrap:anywhere}
 .paid-until{margin:0;border-radius:8px;padding:6px 10px;background:var(--ink-soft);color:var(--ink);font-size:14px}
 .paid-until time{font-weight:700}
-.cab-announcements{border-left:4px solid var(--ink)}
-.cab-announcements h3{margin:0 0 4px;font-size:14px}
+.cab-announcements{padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--ink-soft);font-size:14px}
 .cab-announcements p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
-.cab-announcements article+article{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.cab-announcements p+p{margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
 .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px;position:sticky;top:8px;z-index:3}
 .tabs a{flex:1;text-align:center;padding:8px 10px;border-radius:7px;color:var(--muted);text-decoration:none;font-weight:600}
 .tabs a[aria-current="page"]{background:var(--ink);color:var(--on-ink)}
@@ -721,9 +720,9 @@ window.addEventListener("online",flushPending);
 
 function cabinetAnnouncements(){
   if(!(D.announcements||[]).length)return "";
-  return '<section class="panel cab-announcements" aria-labelledby="announcements-title"><h2 id="announcements-title">Объявления</h2>'+
+  return '<section class="cab-announcements" aria-label="Объявления">'+
     D.announcements.map(function(a){
-      return '<article>'+(a.group?'<h3>'+esc(a.group)+'</h3>':'')+'<p>'+linkify(a.text)+'</p></article>';
+      return '<p>'+linkify(a.text)+'</p>';
     }).join("")+'</section>';
 }
 function render(){
