@@ -94,6 +94,7 @@ const Q = {
 };
 const COLLS = new Set(['groups', 'lessons', 'submissions', 'catalogs', 'variants', 'attempts', 'settings', 'vscores']);
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const CABINET_SETTINGS = 'student-cabinet';
 function allDocs(coll) { return Q.list.all(coll).map(r => ({ id: r.id, data: JSON.parse(r.data), updated: r.updated })); }
 function getDoc(coll, id) { const r = Q.get.get(coll, id); return r ? JSON.parse(r.data) : null; }
 function putDoc(coll, id, data) { Q.put.run(coll, id, JSON.stringify(data), Date.now()); }
@@ -314,6 +315,36 @@ function publicSub(d) {
   const fb = d.fb && d.fb.at ? { text: String(d.fb.text || ''), files: Array.isArray(d.fb.files) ? d.fb.files : [], audio: d.fb.audio || null, at: d.fb.at } : null;
   return { files: d.files || [], comment: d.comment || '', updated: d.updated || 0, seen: !!d.seenAt && d.seenAt >= (d.updated || 0), fb };
 }
+function isPaymentDate(value) {
+  if (typeof value !== 'string' || !/^[1-9]\d{3}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value + 'T00:00:00Z');
+  return !isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+function updateCabinetSettings(patch) {
+  if (!isPlain(patch)) throw Object.assign(new Error('Нужны настройки кабинета.'), { status: 400 });
+  const next = getDoc('settings', CABINET_SETTINGS) || {};
+  function invalid(message) { throw Object.assign(new Error(message), { status: 400 }); }
+  function announcement(value) {
+    if (typeof value !== 'string' || value.length > 2000) invalid('Объявление должно быть не длиннее 2000 символов.');
+    return value.trim();
+  }
+  if (Object.hasOwn(patch, 'announcement')) next.announcement = announcement(patch.announcement);
+  for (const field of ['groupAnnouncements', 'paidUntil']) {
+    if (!Object.hasOwn(patch, field)) continue;
+    if (!isPlain(patch[field])) invalid('Не получилось прочитать настройки кабинета.');
+    const entries = new Map(Object.entries(next[field] || {}));
+    for (const [id, value] of Object.entries(patch[field])) {
+      if (!ID_RE.test(id)) invalid('Неизвестная группа или ученик.');
+      let text = value;
+      if (field === 'groupAnnouncements') text = announcement(value);
+      else if (value !== '' && !isPaymentDate(value)) invalid('Проверьте дату оплаты.');
+      if (text) entries.set(id, text);
+      else entries.delete(id);
+    }
+    next[field] = Object.fromEntries(entries);
+  }
+  putDoc('settings', CABINET_SETTINGS, next);
+}
 // ученик в архиве: данные хранятся, но доступ к кабинету закрыт
 function isArchived(sid) {
   return allDocs('groups').some(g => (Array.isArray(g.data.archived) ? g.data.archived : []).some(s => s && s.id === sid));
@@ -461,6 +492,16 @@ function studentPayload(tok) {
   const groups = allDocs('groups').filter(g => (g.data.students || []).some(s => s.id === sid));
   if (!groups.length) return null;
   const me = groups[0].data.students.find(s => s.id === sid);
+  const cabinet = getDoc('settings', CABINET_SETTINGS) || {};
+  const paymentDate = (cabinet.paidUntil || {})[sid];
+  const announcements = [];
+  if (typeof cabinet.announcement === 'string' && cabinet.announcement.trim()) {
+    announcements.push({ text: cabinet.announcement });
+  }
+  for (const group of groups) {
+    const message = (cabinet.groupAnnouncements || {})[group.id];
+    if (typeof message === 'string' && message.trim()) announcements.push({ group: group.data.name, text: message });
+  }
   const gids = new Set(groups.map(g => g.id));
   const raw = allDocs('lessons').map(l => Object.assign({ id: l.id }, l.data)).filter(l => gids.has(l.groupId));
   // среднее по группе: среднее из процентов всех учеников этих групп
@@ -488,7 +529,8 @@ function studentPayload(tok) {
     sub: publicSub(getDoc('submissions', subId(l.id, sid))),
   }));
   return {
-    student: { id: sid, name: me.name },
+    student: { id: sid, name: me.name, paidUntil: isPaymentDate(paymentDate) ? paymentDate : null },
+    announcements,
     groups: groups.map(g => ({ id: g.id, name: g.data.name })),
     variants: allDocs('variants')
       .filter(v => (v.data.groups || []).some(id => gids.has(id)))
@@ -664,6 +706,14 @@ async function handle(req, res) {
   if (p.startsWith('/api/')) {
     if (!isTeacher(req)) return json(res, 401, { error: 'Нужно войти.' });
     if (m !== 'GET' && !String(req.headers['x-journal'] || '')) return json(res, 403, { error: 'Запрос отклонён.' });
+
+    if (p === '/api/student-cabinet') {
+      if (m === 'GET') return json(res, 200, getDoc('settings', CABINET_SETTINGS) || {});
+      if (m === 'PATCH') {
+        updateCabinetSettings(await readJson(req));
+        return json(res, 200, { ok: true });
+      }
+    }
 
     if ((mm = /^\/api\/docs\/([a-z]+)$/.exec(p)) && m === 'GET') {
       if (!COLLS.has(mm[1])) return json(res, 404, { error: 'Нет такой коллекции.' });

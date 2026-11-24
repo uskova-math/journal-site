@@ -72,7 +72,7 @@ h2{font-family:var(--font-display);font-weight:500;font-size:16px;margin:0;text-
 .btn.danger{background:transparent;color:var(--miss);border-color:transparent;padding-left:0}
 .btn:disabled{opacity:.5;cursor:default}
 .link{background:none;border:none;color:var(--ink);text-decoration:underline;cursor:pointer;padding:0}
-.notice{background:var(--part-soft);color:var(--text);border-radius:10px;padding:10px 14px;display:flex;gap:12px;justify-content:space-between;align-items:center}
+.notice{background:var(--part-soft);color:var(--text);border-radius:10px;padding:10px 14px;display:flex;gap:12px;justify-content:space-between;align-items:flex-start}
 .hint-box{background:var(--ink-soft);border-radius:10px;padding:10px 14px;font-size:14px}
 
 /* Сводка долгов */
@@ -288,11 +288,23 @@ th{font-size:13px;color:var(--muted);font-weight:600}
 .confirm{background:var(--miss-soft);border-radius:8px;padding:8px 10px;font-size:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 button.file{cursor:pointer;font:inherit;text-align:left}
 .m-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
-.close-x{flex:none;width:36px;height:36px;margin:-6px -8px 0 0;border:none;background:transparent;border-radius:8px;font-size:26px;line-height:1;color:var(--muted);cursor:pointer;display:grid;place-items:center}
+.close-x{flex:none;width:44px;height:44px;margin:-6px -8px 0 0;border:none;background:transparent;border-radius:8px;font-size:26px;line-height:1;color:var(--muted);cursor:pointer;display:grid;place-items:center}
 .close-x:hover{background:var(--paper);color:var(--text)}
+.cab-form{display:grid;gap:12px;border:0;padding:0;margin:0;min-width:0}
+.cab-form textarea{min-height:78px}
+.cab-form select{width:100%;min-width:0;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;color:inherit}
+.cab-payments{display:grid;gap:6px}
+.cab-payment{display:grid;grid-template-columns:minmax(0,1fr) minmax(138px,0.8fr) auto;gap:8px;align-items:center}
+.cab-payment label{overflow-wrap:anywhere}
+.cab-payment input{min-width:0}
+@media (max-width:460px){
+  .cab-payment{grid-template-columns:minmax(0,1fr) auto;padding:4px 0}
+  .cab-payment label{grid-column:1/-1}
+}
 .overlay.viewer{z-index:20;padding:12px}
 .v-box{background:var(--surface);border-radius:14px;width:100%;max-width:1040px;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3)}
-.v-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap;position:sticky;top:0;background:var(--surface);border-radius:14px 14px 0 0;z-index:1}
+.v-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 58px 12px 14px;min-height:54px;border-bottom:1px solid var(--line);flex-wrap:wrap;position:sticky;top:0;background:var(--surface);border-radius:14px 14px 0 0;z-index:1}
+.v-bar > .close-x{position:absolute;top:5px;right:6px;margin:0}
 .v-name{overflow-wrap:anywhere;font-weight:600;min-width:0;flex:1}
 .v-btns{display:flex;gap:8px;align-items:center}
 .v-body{padding:14px;display:flex;flex-direction:column;align-items:center;gap:12px}
@@ -545,11 +557,11 @@ function render(){
   if(S.view==="plan"&&ae&&ae.tagName==="INPUT"&&ae.closest&&ae.closest("#plan"))return;
   if((S.mode==="catalog"||S.mode==="variants")&&ae&&ae.tagName==="INPUT"&&ae.type==="text"&&ae.closest&&ae.closest("#app"))return;
   var h='<header class="top"><div><h1>Журнал групп</h1><p class="sub">Посещаемость и домашние задания</p></div>';
-  if(S.db&&S.canWrite&&S.loaded.g)h+='<div class="top-btns">'+(window.SITE?'<button class="btn ghost" data-action="hw-open">Проверка домашек'+hwBadge()+'</button><button class="btn ghost" data-action="vt-open">Варианты</button><button class="btn ghost" data-action="cat-open">Банк заданий</button>':'')+(S.groups.length?'<button class="btn ghost" data-action="links">Ссылки учеников</button>':'')+'<button class="btn ghost" data-action="groups">Группы и ученики</button></div>';
+  if(S.db&&S.canWrite&&S.loaded.g)h+='<div class="top-btns">'+(window.SITE?'<button class="btn ghost" data-action="hw-open">Проверка домашек'+hwBadge()+'</button><button class="btn ghost" data-action="vt-open">Варианты</button><button class="btn ghost" data-action="cat-open">Банк заданий</button><button class="btn ghost" data-action="cabinet-open">Объявления и оплата</button>':'')+(S.groups.length?'<button class="btn ghost" data-action="links">Ссылки учеников</button>':'')+'<button class="btn ghost" data-action="groups">Группы и ученики</button></div>';
   h+='<div class="site-links"><button class="link" data-action="push-open">Уведомления</button><button class="link" data-action="import">Перенос данных</button><button class="link" data-action="logout">Выйти</button></div>';
   if(!window.SITE&&S.db&&S.loaded.l&&dl)h+='<div class="site-links"><button class="link" data-action="export">Экспорт для переезда</button></div>';
   h+='</header>';
-  if(S.notice)h+='<div class="notice" role="status"><span>'+esc(S.notice)+'</span><button class="link" data-action="dismiss">Закрыть</button></div>';
+  if(S.notice)h+='<div class="notice" role="status"><span>'+esc(S.notice)+'</span><button type="button" class="close-x" data-action="dismiss" aria-label="Закрыть уведомление" title="Закрыть уведомление">×</button></div>';
   if(S.fatal){$("#app").innerHTML=h+'<div class="panel empty">'+esc(S.fatal)+'</div>';return;}
   if(!(S.loaded.g&&S.loaded.l)){
     h+='<div class="panel empty">'+(S.stale?"Журнал пока не загрузился. Проверьте интернет: страница подтянет данные сама, как только связь появится.":"Загружаю журнал…")+'</div>';
@@ -973,7 +985,7 @@ function closeViewer(force){
     if(REC&&REC.sub===V.sub){recStop(true);}
     if(d&&d.dirty){
       V.closeAsk=true;
-      fbSay('<div class="confirm">Ответ ученику ещё не отправлен.<button class="btn" data-action="fb-send">Отправить</button><button class="link" data-action="fb-discard">Закрыть без отправки</button></div>');
+      fbSay('<div class="confirm">Ответ ученику ещё не отправлен.<button class="btn" data-action="fb-send">Отправить</button><button class="link" data-action="fb-discard">Выйти без отправки</button></div>');
       var m=$("#fb-msg"); if(m)m.scrollIntoView({block:"nearest"});
       return;
     }
@@ -1060,8 +1072,8 @@ function renderViewer(){
   box.innerHTML='<div class="overlay viewer"><div class="v-box" role="dialog" aria-modal="true" aria-label="'+esc(f.name)+'">'+
     '<div class="v-bar"><span class="v-name">'+esc(f.name)+(n>1?' <span class="muted">('+(V.i+1)+' из '+n+')</span>':'')+'</span>'+
     '<span class="v-btns">'+(n>1?'<button class="x" data-action="v-prev" aria-label="Предыдущий файл">←</button><button class="x" data-action="v-next" aria-label="Следующий файл">→</button>':'')+
-    (dl?'<button class="btn ghost" data-action="v-save">Скачать</button>':'')+
-    '<button class="btn" data-action="v-close">Закрыть</button></span></div>'+
+    (dl?'<button class="btn ghost" data-action="v-save">Скачать</button>':'')+'</span>'+
+    '<button type="button" class="close-x" data-action="v-close" aria-label="Закрыть просмотр" title="Закрыть просмотр">×</button></div>'+
     (V.note?'<p class="v-note">'+esc(V.note)+'</p>':'')+
     (V.task?'<div class="v-task">'+taskHtml(V.task)+'</div>':'')+
     '<p class="err" id="v-err"></p><div class="v-body" id="v-body"><p class="muted">Открываю…</p></div>'+
@@ -1263,10 +1275,11 @@ function renderPeriod(n,all){
     '<span class="muted p-count">'+n+' '+plural(n,"занятие","занятия","занятий")+' за период</span></div>';
   if(P.open){
     var wide=rpWide(), y2=P.m===11?P.y+1:P.y, m2=(P.m+1)%12;
-    h+='<div class="rp-pop" role="dialog" aria-label="Выбор периода"><div class="rp-months">'+
+    h+='<div class="rp-pop" role="dialog" aria-labelledby="rp-title">'+
+      '<div class="m-top"><strong id="rp-title">Выбор периода</strong><button type="button" class="close-x" data-action="rp-close" aria-label="Закрыть выбор периода" title="Закрыть выбор периода">×</button></div><div class="rp-months">'+
       rpMonth(P.y,P.m,les,true,!wide)+(wide?rpMonth(y2,m2,les,false,true):'')+'</div>'+
       '<div class="rp-foot"><span class="hint">'+(P.a?'Теперь нажмите на последний день периода':'Нажмите на первый день периода')+' · <span class="rp-dot"></span> были занятия</span>'+
-      '<span class="rp-actions"><button class="btn ghost" data-action="rp-all">Весь период</button><button class="btn" data-action="rp-close">Закрыть</button></span></div></div>';
+      '<span class="rp-actions"><button class="btn ghost" data-action="rp-all">Весь период</button></span></div></div>';
   }
   return h+'</section>';
 }
@@ -1581,16 +1594,16 @@ function lessonSnap(){return JSON.stringify([M.date,M.topic,M.hw,!!M.noHw,String
 function groupsSnap(){return JSON.stringify(M.groups.map(function(g){return [g.id,g.name,!!g.deleted,g.students.map(function(s){return [s.id,s.name];}),(g.archived||[]).map(function(s){return s.id;})];}));}
 function tryClose(){
   if(!M)return;
-  if(M.kind!=="lesson"&&M.kind!=="groups"){if(!M.busy)closeModal();return;}
-  if(M.kind==="export"){if(!M.busy)closeModal();return;}
-  var dirty=M.kind==="lesson"?(lessonSnap()!==M.init||M.uploading>0):(groupsSnap()!==M.init);
+  if(M.busy)return;
+  var dirty=M.kind==="lesson"?(lessonSnap()!==M.init||M.uploading>0):
+    M.kind==="groups"?groupsSnap()!==M.init:M.kind==="cabinet"&&Object.keys(M.patch).length>0;
   if(!dirty){if(M.kind==="lesson")cancelLesson();else closeModal();return;}
   var box=document.querySelector("#modal .m-dirty");
   if(box){box.classList.remove("pulse");void box.offsetWidth;box.classList.add("pulse");return;}
   var acts=document.querySelector("#modal .m-actions"); if(!acts)return;
   var div=document.createElement("div");
   div.className="confirm m-dirty"; div.setAttribute("role","alert");
-  div.innerHTML='Есть несохранённые изменения.<button class="btn" data-action="dirty-save">Сохранить</button><button class="link" data-action="dirty-discard">Закрыть без сохранения</button>';
+  div.innerHTML='Есть несохранённые изменения.<button class="btn" data-action="dirty-save">Сохранить</button><button class="link" data-action="dirty-discard">Выйти без сохранения</button>';
   acts.parentNode.insertBefore(div,acts);
   div.scrollIntoView({block:"nearest"});
 }
@@ -1665,6 +1678,79 @@ function saveGroups(){
   });
   S.groups.sort(function(a,b){return (a.order||0)-(b.order||0);});
   ensureGroup(); closeModal(); render();
+}
+
+/* ---------- объявления и оплата ---------- */
+function openCabinet(){
+  var modal=M={kind:"cabinet",groupId:S.groupId,config:null,patch:{},error:"",busy:false};
+  renderCabinet();
+  window.SITE.api("GET","/api/student-cabinet").then(function(config){
+    if(M!==modal)return;
+    modal.config=config; renderCabinet();
+  },function(){
+    if(M!==modal)return;
+    modal.error="Не удалось загрузить настройки кабинета."; renderCabinet();
+  });
+}
+function cabinetValue(field,id){
+  var draft=M.patch[field], base=M.config[field];
+  if(!id)return draft===undefined?(base||""):draft;
+  return draft&&Object.hasOwn(draft,id)?draft[id]:(base&&Object.hasOwn(base,id)?base[id]:"");
+}
+function editCabinet(field,id,value){
+  var base=M.config[field];
+  if(!id){
+    if(value===(base||""))delete M.patch[field]; else M.patch[field]=value;
+    return;
+  }
+  var entries=M.patch[field]||(M.patch[field]=Object.create(null));
+  if(value===(base&&Object.hasOwn(base,id)?base[id]:""))delete entries[id]; else entries[id]=value;
+  if(!Object.keys(entries).length)delete M.patch[field];
+}
+function renderCabinet(){
+  var h='<div class="overlay"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="cab-title">'+
+    '<div class="m-top"><h2 id="cab-title">Объявления и оплата</h2>'+
+    '<button type="button" class="close-x" data-action="cabinet-close" aria-label="Закрыть" title="Закрыть">×</button></div>';
+  if(!M.config){
+    h+=M.error?'<p class="err" role="alert">'+esc(M.error)+'</p><div><button type="button" class="btn ghost" data-action="cabinet-open">Повторить</button></div>':
+      '<p class="hint" role="status">Загружаю…</p>';
+  } else {
+    var g=S.groups.find(function(group){return group.id===M.groupId;})||S.groups[0];
+    h+='<fieldset class="cab-form"'+(M.busy?' disabled':'')+'><div class="field">'+
+      '<label for="cab-all">Объявление для всех учеников</label><textarea id="cab-all" maxlength="2000">'+esc(cabinetValue("announcement"))+'</textarea></div>';
+    if(g){
+      M.groupId=g.id;
+      h+='<div class="field"><label for="cab-group">Группа</label><select id="cab-group">'+S.groups.map(function(group){
+        return '<option value="'+esc(group.id)+'"'+(group.id===g.id?' selected':'')+'>'+esc(group.name)+'</option>';
+      }).join("")+'</select></div>'+
+        '<div class="field"><label for="cab-group-announcement">Объявление для выбранной группы</label>'+
+        '<textarea id="cab-group-announcement" maxlength="2000">'+esc(cabinetValue("groupAnnouncements",g.id))+'</textarea></div>'+
+        '<div class="field"><span class="flabel">Оплачено до</span><div class="cab-payments">'+((g.students||[]).map(function(s){
+          return '<div class="cab-payment"><label for="cab-paid-'+esc(s.id)+'">'+esc(s.name)+'</label>'+
+            '<input type="date" id="cab-paid-'+esc(s.id)+'" data-cab-paid="'+esc(s.id)+'" min="1000-01-01" max="9999-12-31" value="'+esc(cabinetValue("paidUntil",s.id))+'">'+
+            '<button type="button" class="link" data-action="cabinet-clear" data-s="'+esc(s.id)+'" aria-label="Очистить дату для '+esc(s.name)+'">Очистить</button></div>';
+        }).join("")||'<p class="hint">В этой группе пока нет учеников.</p>')+'</div></div>';
+    }
+    h+='</fieldset><p class="err" role="alert">'+esc(M.error)+'</p>'+
+      '<div class="m-actions"><span class="spacer"></span><button type="button" class="btn" data-action="cabinet-save"'+
+      (M.busy?' disabled>Сохраняю…':'>Сохранить')+'</button></div>';
+  }
+  $("#modal").innerHTML=h+'</div></div>';
+}
+function saveCabinet(){
+  var modal=M;
+  if(!modal||modal.kind!=="cabinet"||modal.busy||!modal.config)return;
+  if(!Object.keys(modal.patch).length){closeModal();return;}
+  var invalid=$("#modal input:invalid");
+  if(invalid){invalid.reportValidity();return;}
+  modal.busy=true; modal.error=""; renderCabinet();
+  window.SITE.api("PATCH","/api/student-cabinet",modal.patch).then(function(){
+    if(M===modal)closeModal();
+  },function(error){
+    if(M!==modal)return;
+    modal.busy=false; modal.error=error.message||"Не удалось сохранить. Попробуйте ещё раз.";
+    renderCabinet();
+  });
 }
 
 /* ---------- события ---------- */
@@ -1743,6 +1829,13 @@ document.addEventListener("click",function(e){
     case "s-restore": restoreStudent(d.g,d.s); renderGroups(); break;
     case "s-del": {var gg=gFind(d.g); gg.students=gg.students.filter(function(s){return s.id!==d.s;}); renderGroups(); break;}
     case "g-save": saveGroups(); break;
+    case "cabinet-open": openCabinet(); break;
+    case "cabinet-close": tryClose(); break;
+    case "cabinet-save": saveCabinet(); break;
+    case "cabinet-clear": {
+      var input=document.getElementById("cab-paid-"+d.s);
+      if(input){input.value=""; editCabinet("paidUntil",d.s,""); input.focus();}
+      break;}
     case "links": openLinks(); break;
     case "lk-make": makeLink(d.s,false); break;
     case "lk-new": M.confirm=d.s; renderLinks(); break;
@@ -1758,7 +1851,7 @@ document.addEventListener("click",function(e){
     case "logout": fetch("/logout",{method:"POST",credentials:"same-origin"}).finally(function(){location.href="/login";}); break;
     case "export": openExport(); break;
     case "ex-go": doExport(); break;
-    case "dirty-save": if(M&&M.kind==="lesson")saveLesson(); else if(M)saveGroups(); break;
+    case "dirty-save": if(M&&M.kind==="lesson")saveLesson(); else if(M&&M.kind==="cabinet")saveCabinet(); else if(M)saveGroups(); break;
     case "dirty-discard": if(M&&M.kind==="lesson")cancelLesson(); else closeModal(); break;
     case "rp-toggle": if(P.open)rpClose(); else rpOpen(); render(); break;
     case "rp-close": rpClose(); render(); break;
@@ -1830,7 +1923,19 @@ document.addEventListener("click",function(e){
 },true);
 document.addEventListener("change",onDocChange);
 document.addEventListener("input",function(e){if(e.target&&e.target.id==="fb-text"&&V&&V.sub){var d=fbDraft(V.sub);d.text=e.target.value;d.dirty=true;}});
+document.addEventListener("input",function(e){
+  if(!M||M.kind!=="cabinet"||!M.config||M.busy)return;
+  var t=e.target;
+  if(t.id==="cab-all")editCabinet("announcement",null,t.value);
+  else if(t.id==="cab-group-announcement")editCabinet("groupAnnouncements",M.groupId,t.value);
+  else if(t.dataset.cabPaid)editCabinet("paidUntil",t.dataset.cabPaid,t.value);
+});
 function onDocChange(e){
+  if(M&&M.kind==="cabinet"&&M.config&&!M.busy){
+    if(e.target.id==="cab-group"){M.groupId=e.target.value; renderCabinet(); $("#cab-group").focus();}
+    else if(e.target.dataset.cabPaid)editCabinet("paidUntil",e.target.dataset.cabPaid,e.target.value);
+    return;
+  }
   if(e.target&&e.target.id==="fb-file"&&e.target.files&&e.target.files.length){var fl=Array.prototype.slice.call(e.target.files);e.target.value="";fbUpload(fl);return;}
   if(S.mode==="catalog"&&catChange(e.target))return;
   if(S.mode==="variants"&&vtChange(e.target))return;
@@ -2110,7 +2215,7 @@ function doImport(){
     .catch(function(e){M.busy=false;go.disabled=false;st.textContent="Не получилось: "+e.message;});
 }
 
-window.addEventListener("beforeunload",function(e){if(planDirty()||Object.keys(pendingLessonMarks).length){e.preventDefault();e.returnValue="";}});
+window.addEventListener("beforeunload",function(e){if(planDirty()||Object.keys(pendingLessonMarks).length||(M&&M.kind==="cabinet"&&Object.keys(M.patch).length)){e.preventDefault();e.returnValue="";}});
 
 /* ---------- каталог заданий ---------- */
 var CAT_TPL={
