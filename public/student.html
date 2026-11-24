@@ -13,6 +13,14 @@
 .wrap{max-width:820px;margin:0 auto;padding:20px 16px 64px;display:flex;flex-direction:column;gap:16px}
 .top h1{font-size:22px;margin:0}
 .top .sub{margin:2px 0 0;color:var(--muted);font-size:14px}
+.top{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px}
+.top-intro{min-width:0;overflow-wrap:anywhere}
+.paid-until{margin:0;border-radius:8px;padding:6px 10px;background:var(--ink-soft);color:var(--ink);font-size:14px}
+.paid-until time{font-weight:700}
+.cab-announcements{padding:8px 12px;border:1px solid #bf3346;border-radius:8px;background:#fff0f3;color:#5e2330;font-size:14px}
+.cab-announcements a{color:#842536}
+.cab-announcements p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.cab-announcements p+p{margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
 .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px;position:sticky;top:8px;z-index:3}
 .tabs a{flex:1;text-align:center;padding:8px 10px;border-radius:7px;color:var(--muted);text-decoration:none;font-weight:600}
 .tabs a[aria-current="page"]{background:var(--ink);color:var(--on-ink)}
@@ -190,8 +198,13 @@ h2{font-size:16px;margin:0 0 10px}
 .per-b{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;cursor:pointer;font-weight:600;color:var(--muted)}
 .per-b[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
 /* просмотр картинок */
+.close-x{flex:none;width:44px;height:44px;border:0;background:transparent;border-radius:8px;font-size:26px;line-height:1;color:var(--muted);cursor:pointer;display:grid;place-items:center}
+.close-x:hover{background:var(--paper);color:var(--text)}
+.ed-top .close-x{color:inherit}
+.ed-top .close-x:hover{background:#1a2130}
 .viewer{position:fixed;inset:0;background:rgba(10,14,22,.94);z-index:20;display:flex;flex-direction:column}
-.v-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;background:var(--surface)}
+.v-bar{position:relative;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 58px 10px 14px;min-height:54px;background:var(--surface)}
+.v-bar > .close-x{position:absolute;top:5px;right:6px}
 .v-name{font-weight:600;overflow-wrap:anywhere;min-width:0;flex:1}
 .v-body{flex:1;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:12px}
 .v-body img{max-width:100%;height:auto;border-radius:6px;background:#fff}
@@ -706,11 +719,21 @@ document.addEventListener("click",function(e){
 });
 window.addEventListener("online",flushPending);
 
+function cabinetAnnouncements(){
+  if(!(D.announcements||[]).length)return "";
+  return '<section class="cab-announcements" aria-label="Объявления">'+
+    D.announcements.map(function(a){
+      return '<p>'+linkify(a.text)+'</p>';
+    }).join("")+'</section>';
+}
 function render(){
   if(!D)return;
   var groupNames=D.groups.map(function(g){return g.name;}).join(", ");
   var tabs=[["home","Главная"],["lessons","Уроки"]].concat((D.variants||[]).length?[["variants","Варианты"]]:[]).concat((D.catalogs||[]).length?[["tasks","Банк заданий"]]:[]).concat([["stats","Статистика"]]);
-  var h='<header class="top"><h1>Привет, '+esc(D.student.name)+'!</h1><p class="sub">Личный кабинет · '+esc(groupNames)+'</p></header>'+
+  var paid=D.student.paidUntil;
+  var h=(VIEW==="home"?cabinetAnnouncements():"")+
+    '<header class="top"><div class="top-intro"><h1>Привет, '+esc(D.student.name)+'!</h1><p class="sub">Личный кабинет · '+esc(groupNames)+'</p></div>'+
+    (paid?'<p class="paid-until">Оплачено до <time datetime="'+esc(paid)+'">'+esc(fmtDay(paid)+' '+paid.slice(0,4))+'</time></p>':'')+'</header>'+
     '<nav class="tabs" aria-label="Разделы">'+tabs.map(function(t){return '<a href="#'+t[0]+'"'+(VIEW===t[0]||(VIEW==="task"&&t[0]==="tasks")||(VIEW==="variant"&&t[0]==="variants")?' aria-current="page"':'')+'>'+t[1]+'</a>';}).join("")+'</nav>';
   h+=VIEW==="lessons"?renderLessons():VIEW==="stats"?renderStats():VIEW==="tasks"?renderTasks():VIEW==="task"?renderTask():VIEW==="variants"?renderVariants():VIEW==="variant"?renderVariant():renderHome();
   $("#app").innerHTML=h;
@@ -875,7 +898,7 @@ function renderEditor(){
   var it=ED.items[ED.i], n=ED.items.length, last=ED.i===n-1;
   $("#editor").innerHTML='<div class="ed" role="dialog" aria-modal="true" aria-label="Подготовка фото к отправке">'+
     '<div class="ed-top"><span class="ed-count">Фото '+(ED.i+1)+' из '+n+(ED.extra.length?' · ещё '+ED.extra.length+' файл(а) без изменений':'')+'</span>'+
-      '<button type="button" class="btn ghost" data-ed="cancel">Отмена</button></div>'+
+      '<button type="button" class="close-x" data-ed="cancel" aria-label="Закрыть редактор" title="Закрыть редактор">×</button></div>'+
     '<div class="ed-stage" id="ed-stage"><canvas id="ed-c" aria-label="Фото с рамкой обрезки"></canvas></div>'+
     '<p class="ed-hint">Поверните фото, если оно лежит боком, и потяните за уголки рамки, чтобы оставить только решение.</p>'+
     '<div class="ed-tools">'+
@@ -1029,7 +1052,8 @@ document.addEventListener("click",function(e){
   var b=e.target.closest("[data-img]");
   if(b){
     $("#viewer").innerHTML='<div class="viewer" role="dialog" aria-modal="true" aria-label="'+esc(b.dataset.name)+'"><div class="v-bar"><span class="v-name">'+esc(b.dataset.name)+'</span>'+
-      '<a class="btn ghost" href="'+esc(b.dataset.img)+'?download" rel="noopener noreferrer">Скачать</a><button class="btn" data-close>Закрыть</button></div>'+
+      '<a class="btn ghost" href="'+esc(b.dataset.img)+'?download" rel="noopener noreferrer">Скачать</a>'+
+      '<button type="button" class="close-x" data-close aria-label="Закрыть просмотр" title="Закрыть просмотр">×</button></div>'+
       '<div class="v-body" data-close-bg><img src="'+esc(b.dataset.img)+'" alt="'+esc(b.dataset.name)+'"></div></div>';
     return;
   }
