@@ -303,10 +303,11 @@ button.file{cursor:pointer;font:inherit;text-align:left}
 }
 .overlay.viewer{z-index:20;padding:12px}
 .v-box{background:var(--surface);border-radius:14px;width:100%;max-width:1040px;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3)}
-.v-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 58px 12px 14px;min-height:54px;border-bottom:1px solid var(--line);flex-wrap:wrap;position:sticky;top:0;background:var(--surface);border-radius:14px 14px 0 0;z-index:1}
-.v-bar > .close-x{position:absolute;top:5px;right:6px;margin:0}
-.v-name{overflow-wrap:anywhere;font-weight:600;min-width:0;flex:1}
-.v-btns{display:flex;gap:8px;align-items:center}
+.v-bar{display:flex;align-items:flex-start;gap:10px;padding:10px 10px 10px 14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);border-radius:14px 14px 0 0;z-index:1}
+.v-name{overflow-wrap:anywhere;font-weight:600;min-width:0;flex:1;align-self:center}
+.v-btns{display:flex;gap:8px;align-items:center;flex:none}
+.v-btns .btn{min-height:44px}
+.v-btns .close-x{margin:0}
 .v-body{padding:14px;display:flex;flex-direction:column;align-items:center;gap:12px}
 .v-img{max-width:100%;height:auto;border-radius:6px;display:block}
 .v-page{max-width:100%;height:auto;box-shadow:0 1px 4px rgba(0,0,0,.2);background:#fff}
@@ -352,6 +353,9 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 @media (max-width:600px){.v-score .tk{min-width:44px;height:44px}}
 .v-fb-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:15px}.v-fb-h .muted{font-size:13px}
 #fb-text{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:8px 10px;width:100%;resize:vertical;min-height:70px}
+#fb-preview{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:8px 10px}
+#fb-preview-text{margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere;overflow-x:auto}
+#fb-preview-text math[display=block]{margin-block:6px}
 .fb-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.fb-btns .spacer{flex:1}
 .fb-f{display:inline-flex;align-items:center;gap:2px}.fb-f .file img{width:40px;height:40px;object-fit:cover;border-radius:6px}
 .fb-rec{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px}.fb-rec audio{max-width:100%;height:36px}
@@ -496,6 +500,7 @@ a.x{text-decoration:none;display:inline-flex;align-items:center}
 <div id="modal"></div>
 <div id="viewer"></div>
 <script src="/static/site-shim.js"></script>
+<script src="/static/feedback-math.js"></script>
 <script>
 (function(){
 "use strict";
@@ -946,7 +951,8 @@ function fbPanelHtml(){
   var st=d.dirty?(sent?"есть неотправленные изменения":"не отправлено"):(sent?"отправлено "+fSubTime.format(new Date(x.fb.at)):"");
   var canRec=!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&(window.AudioContext||window.webkitAudioContext));
   var h='<div class="v-fb-h"><b>Ответ ученику</b>'+(st?'<span class="muted">'+esc(st)+'</span>':'')+'</div>'+
-    '<textarea id="fb-text" rows="3" placeholder="Например: №3 — потерян минус при раскрытии скобок. №5 — посмотри разбор в банке заданий.">'+esc(d.text)+'</textarea>';
+    '<textarea id="fb-text" rows="3" placeholder="Например: №3 — потерян минус при раскрытии скобок. №5 — посмотри разбор в банке заданий.">'+esc(d.text)+'</textarea>'+
+    '<div id="fb-preview" hidden><span class="hint">Как увидит ученик</span><div id="fb-preview-text"></div></div>';
   if(d.files.length)h+='<div class="files">'+d.files.map(function(f,i){var img=/^image\//.test(f.type||"");
       return '<span class="fb-f"><a class="file" href="'+esc(fileUrl(f))+'" target="_blank" rel="noopener">'+(img?'<img src="'+esc(fileUrl(f))+'" alt="">':'<span class="ext">'+esc(extOf(f.name))+'</span>')+'<span class="fname">'+esc(f.name)+'</span></a>'+
         '<button class="x" data-action="fb-rm" data-i="'+i+'" aria-label="Убрать" title="Убрать">×</button></span>';}).join("")+'</div>';
@@ -959,7 +965,15 @@ function fbPanelHtml(){
     '<div id="fb-msg">'+(d.msg||'')+'</div>';
   return h;
 }
-function fbRefresh(){var box=$("#v-fb");if(box)box.innerHTML=fbPanelHtml();}
+function fbPreview(text){
+  var preview=$("#fb-preview"), content=$("#fb-preview-text");
+  if(preview&&content&&window.feedbackMath)preview.hidden=!window.feedbackMath.render(content,text,esc);
+}
+function fbRefresh(){
+  var box=$("#v-fb"); if(!box)return;
+  box.innerHTML=fbPanelHtml();
+  if(V&&V.sub)fbPreview(fbDraft(V.sub).text);
+}
 function fbSay(html){if(V&&V.sub){fbDraft(V.sub).msg=html;}var m=$("#fb-msg");if(m)m.innerHTML=html;}
 function fbUpload(list){
   if(!V||!V.sub||!S.assets)return;
@@ -1072,8 +1086,8 @@ function renderViewer(){
   box.innerHTML='<div class="overlay viewer"><div class="v-box" role="dialog" aria-modal="true" aria-label="'+esc(f.name)+'">'+
     '<div class="v-bar"><span class="v-name">'+esc(f.name)+(n>1?' <span class="muted">('+(V.i+1)+' из '+n+')</span>':'')+'</span>'+
     '<span class="v-btns">'+(n>1?'<button class="x" data-action="v-prev" aria-label="Предыдущий файл">←</button><button class="x" data-action="v-next" aria-label="Следующий файл">→</button>':'')+
-    (dl?'<button class="btn ghost" data-action="v-save">Скачать</button>':'')+'</span>'+
-    '<button type="button" class="close-x" data-action="v-close" aria-label="Закрыть просмотр" title="Закрыть просмотр">×</button></div>'+
+    (dl?'<button type="button" class="btn ghost" data-action="v-save">Скачать</button>':'')+
+    '<button type="button" class="close-x" data-action="v-close" aria-label="Закрыть просмотр" title="Закрыть просмотр">×</button></span></div>'+
     (V.note?'<p class="v-note">'+esc(V.note)+'</p>':'')+
     (V.task?'<div class="v-task">'+taskHtml(V.task)+'</div>':'')+
     '<p class="err" id="v-err"></p><div class="v-body" id="v-body"><p class="muted">Открываю…</p></div>'+
@@ -1083,6 +1097,7 @@ function renderViewer(){
       '<button class="link danger-link" data-action="v-del-all">Удалить всю работу</button><div id="v-del"></div></div>':'')+
     '</div></div>';
   var body=$("#v-body"), my=V;
+  if(V.sub)fbPreview(fbDraft(V.sub).text);
   var t=f.type||"";
   if(t==="text/note"){body.innerHTML='<p class="muted">Ученик прислал только комментарий, он показан выше.</p>';return;}
   if(/^image\//.test(t)){
@@ -1922,7 +1937,7 @@ document.addEventListener("click",function(e){
   }
 },true);
 document.addEventListener("change",onDocChange);
-document.addEventListener("input",function(e){if(e.target&&e.target.id==="fb-text"&&V&&V.sub){var d=fbDraft(V.sub);d.text=e.target.value;d.dirty=true;}});
+document.addEventListener("input",function(e){if(e.target&&e.target.id==="fb-text"&&V&&V.sub){var d=fbDraft(V.sub);d.text=e.target.value;d.dirty=true;fbPreview(d.text);}});
 document.addEventListener("input",function(e){
   if(!M||M.kind!=="cabinet"||!M.config||M.busy)return;
   var t=e.target;
