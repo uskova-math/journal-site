@@ -41,7 +41,8 @@ h2{font-size:16px;margin:0 0 10px}
 .home-hw{border-left:4px solid var(--ink)}
 .fb{margin:10px 0;padding:10px 12px;border-radius:10px;background:var(--ok-soft);border:1px solid var(--ok)}
 .fb .label{color:var(--ok)}
-.fb-text{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.fb-text{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;overflow-x:auto}
+.fb-text math[display=block]{margin-block:6px}
 .fb-audio{display:flex;flex-direction:column;gap:4px;margin-top:8px}.fb-audio audio{width:100%;max-width:420px}
 .chip.fbchip{background:var(--ok-soft);border-color:var(--ok);color:var(--ok);text-decoration:none;font-weight:600}
 .hw-item.more{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}
@@ -218,6 +219,7 @@ h2{font-size:16px;margin:0 0 10px}
 <main class="wrap" id="app"><div class="panel empty">Загружаю кабинет…</div></main>
 <div id="viewer"></div>
 <div id="editor"></div>
+<script src="/static/feedback-math.js"></script>
 <script>
 (function(){
 "use strict";
@@ -737,6 +739,9 @@ function render(){
     '<nav class="tabs" aria-label="Разделы">'+tabs.map(function(t){return '<a href="#'+t[0]+'"'+(VIEW===t[0]||(VIEW==="task"&&t[0]==="tasks")||(VIEW==="variant"&&t[0]==="variants")?' aria-current="page"':'')+'>'+t[1]+'</a>';}).join("")+'</nav>';
   h+=VIEW==="lessons"?renderLessons():VIEW==="stats"?renderStats():VIEW==="tasks"?renderTasks():VIEW==="task"?renderTask():VIEW==="variants"?renderVariants():VIEW==="variant"?renderVariant():renderHome();
   $("#app").innerHTML=h;
+  if(window.feedbackMath)document.querySelectorAll(".fb-text").forEach(function(reply){
+    window.feedbackMath.render(reply,reply.textContent,linkify);
+  });
   var curTab=document.querySelector('.tabs [aria-current="page"]'), nav=document.querySelector(".tabs");
   if(curTab&&nav&&nav.scrollWidth>nav.clientWidth)nav.scrollLeft=curTab.offsetLeft-(nav.clientWidth-curTab.offsetWidth)/2;
 }
